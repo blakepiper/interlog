@@ -1,0 +1,4 @@
+time_start,time_end,total_interactions,clicks,scrolls,keypresses
+0.0,5.0,29,3,3,10
+5.0,10.0,25,4,4,6
+10.0,15.0,0,0,0,0

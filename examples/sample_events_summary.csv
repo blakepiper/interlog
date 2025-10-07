@@ -1,0 +1,17 @@
+metric,value
+session_duration_seconds,10.123
+session_duration_formatted,0:00:10
+total_events,78
+total_interactions,54
+total_mouse_moves,24
+total_clicks,7
+total_scrolls,7
+total_keypresses,16
+total_drags,1
+clicks_per_minute,41.49
+actions_per_minute,320.06
+keypresses_per_minute,94.83
+rage_clicks_detected,1
+longest_pause_seconds,0.24
+average_pause_seconds,0.131
+total_scroll_distance,0

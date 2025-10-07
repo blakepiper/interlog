@@ -1,0 +1,9 @@
+{
+  "session_name": "sample_session",
+  "start_time": "2024-01-15T14:30:00.000000",
+  "end_time": "2024-01-15T14:30:10.123000",
+  "privacy_mode": false,
+  "output_dir": "/path/to/output",
+  "duration_seconds": 10.123,
+  "total_events": 72
+}
