@@ -19,7 +19,7 @@ InterLog captures keyboard and mouse interactions with precise timestamps, desig
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/interlog.git
+git clone https://github.com/blakepiper/interlog.git
 cd interlog
 
 # Install dependencies
@@ -199,8 +199,8 @@ sudo apt-get install python3-xlib  # Debian/Ubuntu
 
 This is a free tool for researchers—contributions welcome!
 
-- Found a bug? [Open an issue](https://github.com/yourusername/interlog/issues)
-- Have a feature idea? [Start a discussion](https://github.com/yourusername/interlog/discussions)
+- Found a bug? [Open an issue](https://github.com/blakepiper/interlog/issues)
+- Have a feature idea? [Start a discussion](https://github.com/blakepiper/interlog/discussions)
 - Want to contribute code? Fork and submit a PR!
 
 ## License
