@@ -3,10 +3,13 @@
 ## Installation (30 seconds)
 
 ```bash
-# 1. Install Python dependency
-pip install -r requirements.txt
+# 1. Install the package (provides the `interlog` command)
+pip install .
 
-# 2. You're ready!
+# 2. (optional) Confirm everything is set up
+interlog doctor
+
+# 3. You're ready!
 ```
 
 ## Your First Session (2 minutes)
@@ -14,14 +17,14 @@ pip install -r requirements.txt
 ### Step 1: Start Recording
 
 ```bash
-python interlog.py
+interlog record
 ```
 
 You'll see:
 ```
-Starting InterLog session: 20240115_143000
-Privacy mode: DISABLED
-Output directory: /current/directory
+Session:  20240115_143000
+Privacy:  DISABLED
+Output:   /current/directory
 
 Recording... Press Ctrl+C to stop.
 ```
@@ -41,36 +44,52 @@ Press `Ctrl+C`
 You'll see:
 ```
 Session saved!
-Events: 20240115_143000_events.csv
-Metadata: 20240115_143000_metadata.json
+Events:   interlog-data/20240115_143000/events.csv
+Metadata: interlog-data/20240115_143000/metadata.json
 
 Total events captured: 2341
 Duration: 45.67 seconds
 
-Run analyzer to generate statistics:
-  python analyzer.py 20240115_143000_events.csv
+Run the analyzer to generate statistics:
+  interlog analyze interlog-data/20240115_143000
 ```
 
 ### Step 4: Analyze
 
 ```bash
-python analyzer.py 20240115_143000_events.csv
+interlog analyze interlog-data/20240115_143000
 ```
 
-You'll get:
+You'll get (written into the same session folder):
 - Console summary of all statistics
-- `20240115_143000_summary.csv` - Stats spreadsheet
-- `20240115_143000_intensity.csv` - Time-bucketed activity
+- `summary.csv` - Stats spreadsheet
+- `intensity.csv` - Time-bucketed activity
+
+## All-in-one: screen + interactions + viewer
+
+If you have [ffmpeg](https://ffmpeg.org/download.html) installed:
+
+```bash
+# Records the primary screen AND interactions together (Ctrl+C to stop)
+interlog record --screen --name p01
+
+# Open the synced viewer, then load the recording it produced
+interlog view interlog-data/p01
+```
+
+In the viewer, click a "hot spot" (or anywhere on the intensity timeline) to
+jump the video to that moment. If the video and log drift, nudge the sync
+offset field until a known click lines up.
 
 ## Common Use Cases
 
-### UX Research Session
+### HCI Research Session
 
 ```bash
 # 1. Start screen recording (OBS, QuickTime, etc.)
 
 # 2. Start InterLog with a descriptive name
-python interlog.py --name participant_01_checkout_flow
+interlog record --name participant_01_checkout_flow
 
 # 3. Conduct research session
 
@@ -79,14 +98,14 @@ python interlog.py --name participant_01_checkout_flow
 # 5. Stop screen recording
 
 # 6. Analyze
-python analyzer.py participant_01_checkout_flow_events.csv
+interlog analyze interlog-data/participant_01_checkout_flow
 ```
 
 ### Privacy Mode (Sensitive Data)
 
 ```bash
 # Don't record which keys were pressed
-python interlog.py --privacy --name sensitive_session
+interlog record --privacy --name sensitive_session
 ```
 
 ### Organize Multiple Sessions
@@ -96,10 +115,10 @@ python interlog.py --privacy --name sensitive_session
 mkdir -p research_study/sessions
 
 # Record session
-python interlog.py --output research_study/sessions --name p01
+interlog record --output research_study/sessions --name p01
 
 # Analyze later
-python analyzer.py research_study/sessions/p01_events.csv
+interlog analyze research_study/sessions/p01
 ```
 
 ## What to Look For
@@ -112,7 +131,7 @@ python analyzer.py research_study/sessions/p01_events.csv
 ### High Interaction Density
 - **Lots of actions in short time**
 - Could mean: scanning for something, uncertainty, or error recovery
-- Use `*_intensity.csv` to find these moments
+- Use `intensity.csv` to find these moments
 
 ### Long Pauses
 - **Gaps between actions**
@@ -128,7 +147,7 @@ python analyzer.py research_study/sessions/p01_events.csv
 
 1. **Always start screen recording first** - Then start InterLog
 2. **Name your sessions** - Use `--name` for easier identification
-3. **Check the summary** - Run analyzer.py to spot patterns
+3. **Check the summary** - Run `interlog analyze` to spot patterns
 4. **Use intensity data** - Find "hot spots" in long videos quickly
 5. **Combine with notes** - Add timestamps to your observations
 

@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+title: "InterLog: A Lightweight, Local Interaction-Logging Tool for HCI Research"
+message: "If you use this software in your research, please cite it as below."
+type: software
+authors:
+  - name: "blakepiper"
+repository-code: "https://github.com/blakepiper/interlog"
+url: "https://github.com/blakepiper/interlog"
+abstract: >-
+  InterLog captures timestamped keyboard and mouse interactions locally and
+  syncs them with a screen recording, producing structured event data and a
+  navigational timeline for analyzing human-computer interaction sessions.
+keywords:
+  - human-computer interaction
+  - HCI
+  - interaction logging
+  - input logging
+  - usability
+  - user research
+license: MIT
+version: "1.0.0"
+date-released: "2026-06-14"

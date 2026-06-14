@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# InterLog session output (don't commit captured sessions)
+interlog-data/
+*_events.csv
+*_metadata.json
+*_summary.csv
+*_intensity.csv
+*_summary.json
+*transcript.txt
+*text.json
+
+# Keep the bundled example outputs
+!examples/*.csv
+!examples/*.json
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local AI assistant working notes (not part of the project)
+CLAUDE.md

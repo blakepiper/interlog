@@ -1,6 +1,8 @@
 # Contributing to InterLog
 
-Thank you for your interest in improving InterLog! This project exists to help UX researchers, and contributions are very welcome.
+Thank you for your interest in improving InterLog! This project exists to help HCI researchers, and contributions are very welcome.
+
+> **License note:** InterLog is MIT-licensed (see [LICENSE](LICENSE)). By contributing you agree your contributions are licensed under the same terms. If you use InterLog in research, please cite it ([CITATION.cff](CITATION.cff)).
 
 ## Ways to Contribute
 
@@ -14,7 +16,7 @@ Found a bug? Please [open an issue](https://github.com/yourusername/interlog/iss
 ### Feature Requests
 Have an idea? [Start a discussion](https://github.com/yourusername/interlog/discussions) to talk through:
 - The use case
-- How it would help UX researchers
+- How it would help HCI researchers
 - Whether it fits the "simple and free" philosophy
 
 ### Documentation
@@ -32,14 +34,31 @@ See below for development setup and guidelines.
 git clone https://github.com/yourusername/interlog.git
 cd interlog
 
-# Install dependencies
-pip install -r requirements.txt
+# Install in editable mode (changes to src/ take effect immediately)
+pip install -e .
+
+# Confirm the environment is healthy
+interlog doctor
 
 # Run a test capture
-python interlog.py --name test_session
+interlog record --name test_session
 
 # Analyze the output
-python analyzer.py test_session_events.csv
+interlog analyze interlog-data/test_session
+```
+
+## Project Layout
+
+```
+src/interlog/
+  cli.py        # argparse entry point: record / analyze / view / doctor subcommands
+  recorder.py   # InteractionLogger - captures events to CSV
+  analyzer.py   # InteractionAnalyzer - statistics and intensity
+  screen.py     # ScreenRecorder - ffmpeg screen capture (record --screen)
+  viewer.py     # build_viewer() - generates the synced HTML viewer
+  viewer_template.html  # viewer UI (data injected at build time)
+  doctor.py     # environment + input-capture diagnostics
+pyproject.toml  # packaging + the `interlog` console script
 ```
 
 ## Code Style
@@ -68,7 +87,7 @@ InterLog is designed to be:
 - **Minimal dependencies** - Easy to install and maintain
 - **Cross-platform** - Works on Windows, Mac, Linux
 
-When adding features, ask: "Does this help UX researchers without adding complexity?"
+When adding features, ask: "Does this help HCI researchers without adding complexity?"
 
 ## Roadmap Ideas (Future)
 
@@ -97,9 +116,11 @@ Currently no automated tests (contributions welcome!). Manual testing checklist:
 
 - [ ] Basic capture works (mouse, keyboard, scroll)
 - [ ] Privacy mode correctly redacts keys
+- [ ] `record --screen` produces a playable .mp4 and stops cleanly on Ctrl+C
+- [ ] `interlog view` opens, loads a recording, and seeks on hot-spot/timeline click
 - [ ] Analyzer produces correct statistics
 - [ ] Files are created in correct locations
-- [ ] Help text is accurate (`python interlog.py --help`)
+- [ ] Help text is accurate (`interlog --help`, `interlog record --help`)
 
 ## Questions?
 
@@ -109,8 +130,8 @@ Currently no automated tests (contributions welcome!). Manual testing checklist:
 
 ## Code of Conduct
 
-Be kind, constructive, and remember we're all here to help UX researchers. No jerks.
+Be kind, constructive, and remember we're all here to help HCI researchers. No jerks.
 
 ---
 
-Thank you for helping make UX research more accessible!
+Thank you for helping make HCI research more accessible!

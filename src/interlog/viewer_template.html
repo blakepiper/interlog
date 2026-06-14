@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InterLog Viewer</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #14161a; color: #e6e8eb;
+    font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  header { padding: 14px 18px; border-bottom: 1px solid #262a31; }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  header .meta { color: #8b929c; font-size: 12px; margin-top: 2px; }
+  main { display: grid; grid-template-columns: 1fr 280px; gap: 16px; padding: 16px 18px; }
+  .video-pane { min-width: 0; }
+  video { width: 100%; background: #000; border-radius: 8px; aspect-ratio: 16/9; }
+  .no-video {
+    width: 100%; aspect-ratio: 16/9; border: 1px dashed #39404a; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    color: #8b929c; padding: 20px;
+  }
+  .controls { display: flex; align-items: center; gap: 14px; margin: 12px 0 6px; flex-wrap: wrap; }
+  .controls label { color: #b7bdc6; font-size: 12px; }
+  input[type="number"] { width: 76px; background: #1c1f25; color: #e6e8eb;
+    border: 1px solid #39404a; border-radius: 6px; padding: 4px 6px; }
+  input[type="file"] { color: #b7bdc6; font-size: 12px; }
+  .timeline-wrap { margin-top: 8px; }
+  canvas { width: 100%; height: 84px; display: block; background: #1a1d22;
+    border-radius: 6px; cursor: pointer; }
+  .legend { display: flex; gap: 16px; margin-top: 6px; color: #8b929c; font-size: 11px; }
+  .legend span::before { content: "■"; margin-right: 4px; }
+  .l-int::before { color: #4f8cff; }
+  .l-rage::before { color: #ff5d5d; }
+  .l-play::before { color: #ffd24a; }
+  aside { border-left: 1px solid #262a31; padding-left: 16px; }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+    color: #8b929c; margin: 0 0 8px; }
+  .spot { display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 9px; border: 1px solid #262a31; border-radius: 6px; margin-bottom: 6px;
+    cursor: pointer; background: #1a1d22; }
+  .spot:hover { border-color: #4f8cff; }
+  .spot .t { font-variant-numeric: tabular-nums; color: #cfd4db; }
+  .spot .tag { font-size: 11px; color: #8b929c; }
+  .spot.rage .tag { color: #ff7d7d; }
+  .hint { color: #6f7680; font-size: 11px; margin-top: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>InterLog Viewer — <span id="session"></span></h1>
+  <div class="meta" id="metaline"></div>
+</header>
+<main>
+  <div class="video-pane">
+    <video id="video" controls playsinline style="display:none"></video>
+    <div class="no-video" id="novideo">
+      Load your screen recording to sync it with the interaction timeline.<br>
+      (The video stays on your machine — nothing is uploaded.)
+    </div>
+
+    <div class="controls">
+      <input type="file" id="videofile" accept="video/*">
+      <label>Sync offset (s):
+        <input type="number" id="offset" step="0.1" value="0">
+      </label>
+      <span class="hint">video_time = event_time + offset · nudge until a known click lines up</span>
+    </div>
+
+    <div class="timeline-wrap">
+      <canvas id="timeline"></canvas>
+      <div class="legend">
+        <span class="l-int">interaction intensity</span>
+        <span class="l-rage">rage clicks</span>
+        <span class="l-play">playhead</span>
+      </div>
+    </div>
+  </div>
+
+  <aside>
+    <h2>Hot spots</h2>
+    <div id="spots"></div>
+    <p class="hint">Click a hot spot or anywhere on the timeline to jump the video there.</p>
+  </aside>
+</main>
+
+<script id="data">window.INTERLOG_DATA = __INTERLOG_DATA__;</script>
+<script>
+(function () {
+  const D = window.INTERLOG_DATA;
+  const video = document.getElementById("video");
+  const novideo = document.getElementById("novideo");
+  const canvas = document.getElementById("timeline");
+  const ctx = canvas.getContext("2d");
+  const offsetEl = document.getElementById("offset");
+
+  let offset = D.offset || 0;
+  offsetEl.value = offset;
+
+  document.getElementById("session").textContent = D.session || "(session)";
+  document.getElementById("metaline").textContent =
+    `duration ${fmt(D.duration)} · ${D.markers.length} interactions · ${D.rageClicks.length} rage-click bursts`;
+
+  function fmt(s) {
+    s = Math.max(0, s || 0);
+    const m = Math.floor(s / 60), sec = (s % 60);
+    return `${m}:${sec.toFixed(1).padStart(4, "0")}`;
+  }
+
+  // ---- Video loading (local file, no upload) ----
+  document.getElementById("videofile").addEventListener("change", function (e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    video.src = URL.createObjectURL(file);
+    video.style.display = "block";
+    novideo.style.display = "none";
+  });
+
+  offsetEl.addEventListener("input", function () {
+    offset = parseFloat(offsetEl.value) || 0;
+    draw();
+  });
+
+  // ---- Timeline rendering ----
+  function resize() {
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = canvas.clientWidth * ratio;
+    canvas.height = canvas.clientHeight * ratio;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    draw();
+  }
+
+  function xFor(t) {
+    const dur = D.duration || 1;
+    return (t / dur) * canvas.clientWidth;
+  }
+
+  function draw() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+
+    // intensity bars
+    const maxInt = Math.max(1, ...D.buckets.map(b => b.total));
+    for (const b of D.buckets) {
+      const x0 = xFor(b.t0), x1 = xFor(b.t1);
+      const bh = (b.total / maxInt) * (h - 14);
+      ctx.fillStyle = "#3a5a9f";
+      ctx.fillRect(x0, h - bh, Math.max(1, x1 - x0 - 1), bh);
+    }
+
+    // rage-click markers
+    ctx.fillStyle = "#ff5d5d";
+    for (const r of D.rageClicks) {
+      const x = xFor(r.t);
+      ctx.fillRect(x - 1, 0, 2, h);
+    }
+
+    // playhead (logical time = video.currentTime - offset)
+    if (video.style.display !== "none" && !isNaN(video.currentTime)) {
+      const lt = video.currentTime - offset;
+      if (lt >= 0 && lt <= D.duration) {
+        const x = xFor(lt);
+        ctx.fillStyle = "#ffd24a";
+        ctx.fillRect(x - 1, 0, 2, h);
+      }
+    }
+  }
+
+  canvas.addEventListener("click", function (e) {
+    const rect = canvas.getBoundingClientRect();
+    const frac = (e.clientX - rect.left) / rect.width;
+    seekTo(frac * (D.duration || 0));
+  });
+
+  function seekTo(logicalTime) {
+    if (video.style.display === "none") return;
+    video.currentTime = Math.max(0, logicalTime + offset);
+    video.play().catch(() => {});
+  }
+
+  // ---- Hot spots list ----
+  function buildSpots() {
+    const spots = [];
+    for (const r of D.rageClicks) spots.push({ t: r.t, label: `rage click ×${r.count}`, rage: true });
+    const top = [...D.buckets].sort((a, b) => b.total - a.total).slice(0, 6);
+    for (const b of top) if (b.total > 0) spots.push({ t: b.t0, label: `${b.total} interactions`, rage: false });
+    spots.sort((a, b) => a.t - b.t);
+
+    const host = document.getElementById("spots");
+    host.innerHTML = "";
+    if (!spots.length) { host.innerHTML = '<p class="hint">No notable activity detected.</p>'; return; }
+    for (const s of spots) {
+      const el = document.createElement("div");
+      el.className = "spot" + (s.rage ? " rage" : "");
+      el.innerHTML = `<span class="t">${fmt(s.t)}</span><span class="tag">${s.label}</span>`;
+      el.addEventListener("click", () => seekTo(s.t));
+      host.appendChild(el);
+    }
+  }
+
+  // animate playhead while video plays
+  function loop() { draw(); requestAnimationFrame(loop); }
+
+  window.addEventListener("resize", resize);
+  buildSpots();
+  resize();
+  loop();
+})();
+</script>
+</body>
+</html>
