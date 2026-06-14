@@ -44,7 +44,7 @@ evidence and triage, not a one-off clip you'd just watch.
 - **Cross-platform**: Works on Windows, macOS, and Linux
 - **Structured output**: CSV files ready for analysis in Excel, R, Python, or your tool of choice
 - **Rich analytics**: Automatic statistics including rage clicks, pause detection, interaction intensity
-- **Video sync**: Timestamps align with your OBS/QuickTime/etc. recordings
+- **Video sync**: Built-in screen recording (`--screen`), or align timestamps with your own OBS/QuickTime/etc. recordings
 
 ## Quick Start
 
@@ -67,7 +67,7 @@ configuration files, no accounts.
 Verify your environment any time with:
 
 ```bash
-interlog doctor          # check Python + pynput
+interlog doctor          # check Python + pynput (+ ffmpeg, for --screen)
 interlog doctor --live   # confirm input capture works (press ESC to stop)
 ```
 
@@ -139,6 +139,15 @@ Note: keystrokes are captured globally across apps and caret moves aren't
 tracked, so the transcript is approximate — treat it as a reviewable artifact.
 
 ## Example Workflow
+
+Simplest path — let InterLog record the screen for you:
+
+1. **Start InterLog with screen capture**: `interlog record --screen --name user_study_p1`
+2. **Conduct your user research session**
+3. **Stop InterLog** (Ctrl+C) — writes the MP4, events CSV, and metadata
+4. **Open the synced viewer**: `interlog view interlog-data/user_study_p1`
+
+Or bring your own screen recorder:
 
 1. **Start your screen recording** (OBS, QuickTime, etc.)
 2. **Start InterLog**: `interlog record --name user_study_p1`
@@ -361,7 +370,12 @@ Current version is MVP. Future enhancements could include:
 ## FAQ
 
 **Q: Does this record my screen?**
-A: No! Use your favorite screen recorder. InterLog only captures mouse/keyboard events.
+A: Optionally, yes. By default InterLog only captures mouse/keyboard events, but
+`interlog record --screen` will also capture the primary screen to an MP4 (via
+[ffmpeg](https://ffmpeg.org/download.html)), already time-aligned with the
+interaction log so you can scrub it in `interlog view`. You can still use your
+own screen recorder (OBS, QuickTime, etc.) instead and sync against the
+timestamps — `--screen` is just the all-in-one option.
 
 **Q: Is my data sent anywhere?**
 A: No. Everything stays on your local machine. No network access, no cloud, no telemetry.
