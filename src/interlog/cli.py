@@ -500,10 +500,10 @@ def _cmd_view(args):
         console.rule("[bold cyan]InterLog Viewer[/bold cyan]", style="cyan dim")
         console.print(f"\n  [bold white]{url}[/bold white]\n")
         if video_src:
-            console.print(f"  [green]✓[/green]  Recording auto-loaded — seeking works immediately")
+            console.print("  [green]✓[/green]  Recording auto-loaded — seeking works immediately")
         else:
-            console.print(f"  [yellow]![/yellow]  No recording found — load it manually in the browser")
-        console.print(f"\n  [dim]Press Ctrl+C to stop.[/dim]\n")
+            console.print("  [yellow]![/yellow]  No recording found — load it manually in the browser")
+        console.print("\n  [dim]Press Ctrl+C to stop.[/dim]\n")
 
         if not args.no_open:
             webbrowser.open(url)
@@ -533,9 +533,9 @@ def _cmd_view(args):
     console.rule("[bold cyan]InterLog Viewer[/bold cyan]", style="cyan dim")
     console.print(f"\n  [bold white]{output}[/bold white]\n")
     if video_file.exists():
-        console.print(f"  [yellow]![/yellow]  Recording found — re-run with [bold]--serve[/bold] to auto-load it")
+        console.print("  [yellow]![/yellow]  Recording found — re-run with [bold]--serve[/bold] to auto-load it")
     else:
-        console.print(f"  [dim]Load your screen recording via the file picker in the browser.[/dim]")
+        console.print("  [dim]Load your screen recording via the file picker in the browser.[/dim]")
     console.print()
     return 0
 
@@ -555,7 +555,6 @@ def main(argv=None):
         from interlog.branding import print_banner
         from rich.console import Console
         from rich.table import Table
-        from rich import box
 
         print_banner()
 
@@ -573,7 +572,7 @@ def main(argv=None):
         table.add_row("view", "Open the synced timeline viewer  [dim](add --serve for auto video loading)[/dim]")
         table.add_row("doctor", "Check your environment")
         console.print(table)
-        console.print(f"\n  [dim]Run 'interlog <command> --help' for details.[/dim]\n")
+        console.print("\n  [dim]Run 'interlog <command> --help' for details.[/dim]\n")
         return 0
 
     return args.func(args)

@@ -424,7 +424,6 @@ class InteractionAnalyzer:
         from rich.console import Console
         from rich.table import Table
         from rich.columns import Columns
-        from rich import box
 
         console = Console(highlight=False)
         s = self.stats
@@ -540,7 +539,7 @@ class InteractionAnalyzer:
         if spark and spark.strip():
             dur = s["session_duration_formatted"]
             dashes = max(2, len(spark) - len(dur) - 1)
-            console.print(f"  [bold white]Activity[/bold white]  [dim](5s buckets)[/dim]")
+            console.print("  [bold white]Activity[/bold white]  [dim](5s buckets)[/dim]")
             console.print(f"  [cyan]{spark}[/cyan]")
             console.print(f"  [dim]0:00 {'─' * dashes} {dur}[/dim]")
             console.print()

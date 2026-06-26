@@ -22,10 +22,10 @@ def _fail(console, msg):
 
 def _check_python_version(console):
     v = sys.version_info
-    if (v.major, v.minor) >= (3, 7):
+    if (v.major, v.minor) >= (3, 9):
         _ok(console, f"Python [cyan]{v.major}.{v.minor}.{v.micro}[/cyan]")
         return True
-    _fail(console, f"Python [cyan]{v.major}.{v.minor}.{v.micro}[/cyan]  [dim](need 3.7+)[/dim]")
+    _fail(console, f"Python [cyan]{v.major}.{v.minor}.{v.micro}[/cyan]  [dim](need 3.9+)[/dim]")
     return False
 
 
@@ -74,7 +74,7 @@ def _check_heatmap_deps(console):
     if missing:
         _warn(console, f"Heatmap deps missing: {', '.join(missing)}  "
               f"[dim](optional — needed for 'interlog heatmap')[/dim]")
-        console.print(f"       [dim]pip install 'interlog[heatmap]'[/dim]")
+        console.print("       [dim]pip install 'interlog[heatmap]'[/dim]")
     else:
         try:
             mpl_v = importlib.metadata.version("matplotlib")
@@ -124,7 +124,7 @@ def _run_live_test(console):
     print()
     console.print()
     if count["n"] == 0:
-        _fail(console, f"No events captured — likely an OS permissions issue")
+        _fail(console, "No events captured — likely an OS permissions issue")
         console.print("  [dim]macOS: System Settings › Privacy › Accessibility → add your terminal[/dim]")
         console.print("  [dim]Linux: add your user to the 'input' group, or check Wayland vs X11[/dim]")
         return False
