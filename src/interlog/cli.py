@@ -88,6 +88,10 @@ Examples:
         help="Gaussian blur radius in pixels (default: 25).",
     )
     p_heatmap.add_argument(
+        "--frame-at", type=float, default=0.25, metavar="PCT",
+        help="Fraction into the recording to grab the background frame, 0.0–1.0 (default: 0.25).",
+    )
+    p_heatmap.add_argument(
         "--no-open", action="store_true",
         help="Save the PNG without opening it.",
     )
@@ -227,6 +231,7 @@ def _cmd_heatmap(args):
                 session_path,
                 output=args.output,
                 sigma=args.sigma,
+                frame_at=args.frame_at,
             )
         except ImportError:
             console.print("[red]Error:[/red] heatmap requires optional dependencies.")

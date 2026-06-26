@@ -34,12 +34,12 @@ def _load_events(events_path):
     return events
 
 
-def _grab_frame(video_path, out_path, duration):
-    """Extract a single frame at ~25% into the recording."""
+def _grab_frame(video_path, out_path, duration, frame_at=0.25):
+    """Extract a single frame at `frame_at` fraction into the recording."""
     ff = shutil.which("ffmpeg")
     if not ff:
         return None
-    t = max(0.5, (duration or 0) * 0.25) if duration else 2.0
+    t = max(0.5, (duration or 0) * frame_at) if duration else 2.0
     r = subprocess.run(
         [ff, "-y", "-ss", f"{t:.1f}", "-i", str(video_path),
          "-frames:v", "1", "-q:v", "2", str(out_path)],
@@ -94,13 +94,14 @@ def _heatmap_cmap():
     )
 
 
-def build_heatmap(session_path, output=None, sigma=25):
+def build_heatmap(session_path, output=None, sigma=25, frame_at=0.25):
     """Build a mouse movement + click heatmap PNG for a session.
 
     Args:
         session_path: Session folder or path to events.csv.
         output: Output PNG path (default: <session>/heatmap.png).
         sigma: Gaussian blur radius in pixels (default: 25).
+        frame_at: Fraction into the recording to grab the background frame (default: 0.25).
 
     Returns:
         Path to the written PNG.
@@ -149,7 +150,7 @@ def build_heatmap(session_path, output=None, sigma=25):
     bg_img_path = None
     if video_path.exists():
         tmp = session_dir / "_hm_frame.jpg"
-        grabbed = _grab_frame(video_path, tmp, duration)
+        grabbed = _grab_frame(video_path, tmp, duration, frame_at=frame_at)
         if grabbed:
             try:
                 probe = Image.open(grabbed)
@@ -223,6 +224,17 @@ def build_heatmap(session_path, output=None, sigma=25):
         rx, ry = zip(*clicks_rage)
         ax.scatter(rx, ry, s=55, c="#ff3333", alpha=0.85,
                    linewidths=1.5, marker="x", zorder=5)
+
+    # Density colorbar
+    if heat.max() > 0:
+        sm = plt.cm.ScalarMappable(cmap=_heatmap_cmap(), norm=plt.Normalize(0, 1))
+        sm.set_array([])
+        cbar = fig.colorbar(sm, ax=ax, orientation="vertical",
+                            fraction=0.018, pad=0.008, shrink=0.35, aspect=18)
+        cbar.set_ticks([0, 1])
+        cbar.set_ticklabels(["low", "high"])
+        cbar.ax.tick_params(labelsize=8, colors="#999999", length=0, pad=4)
+        cbar.outline.set_visible(False)
 
     dur_s = int(duration)
     title = (

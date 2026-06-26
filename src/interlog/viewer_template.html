@@ -45,6 +45,7 @@
   .spot .t { font-variant-numeric: tabular-nums; color: #cfd4db; }
   .spot .tag { font-size: 11px; color: #8b929c; }
   .spot.rage .tag { color: #ff7d7d; }
+  .spot.dim { opacity: 0.5; }
   .hint { color: #6f7680; font-size: 11px; margin-top: 4px; }
 </style>
 </head>
@@ -193,7 +194,12 @@
     const spots = [];
     for (const r of D.rageClicks) spots.push({ t: r.t, label: `rage click ×${r.count}`, rage: true });
     const top = [...D.buckets].sort((a, b) => b.total - a.total).slice(0, 6);
-    for (const b of top) if (b.total > 0) spots.push({ t: b.t0, label: `${b.total} interactions`, rage: false });
+    for (const b of top) {
+      if (b.total <= 0) continue;
+      // Skip if a rage click already covers this window
+      const covered = D.rageClicks.some(r => r.t >= b.t0 && r.t < b.t1);
+      spots.push({ t: b.t0, label: `peak · ${b.total} events`, rage: false, dim: covered });
+    }
     spots.sort((a, b) => a.t - b.t);
 
     const host = document.getElementById("spots");
@@ -201,7 +207,7 @@
     if (!spots.length) { host.innerHTML = '<p class="hint">No notable activity detected.</p>'; return; }
     for (const s of spots) {
       const el = document.createElement("div");
-      el.className = "spot" + (s.rage ? " rage" : "");
+      el.className = "spot" + (s.rage ? " rage" : "") + (s.dim ? " dim" : "");
       el.innerHTML = `<span class="t">${fmt(s.t)}</span><span class="tag">${s.label}</span>`;
       el.addEventListener("click", () => seekTo(s.t));
       host.appendChild(el);
