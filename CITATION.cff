@@ -3,7 +3,7 @@ title: "InterLog: A Lightweight, Local Interaction-Logging Tool for HCI Research
 message: "If you use this software in your research, please cite it as below."
 type: software
 authors:
-  - name: "blakepiper"
+  - name: "Blake Piper"
 repository-code: "https://github.com/blakepiper/interlog"
 url: "https://github.com/blakepiper/interlog"
 abstract: >-

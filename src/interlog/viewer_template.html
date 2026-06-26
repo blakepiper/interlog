@@ -62,7 +62,7 @@
     </div>
 
     <div class="controls">
-      <input type="file" id="videofile" accept="video/*">
+      <span id="file-pick"><input type="file" id="videofile" accept="video/*"></span>
       <label>Sync offset (s):
         <input type="number" id="offset" step="0.1" value="0">
       </label>
@@ -107,6 +107,14 @@
     s = Math.max(0, s || 0);
     const m = Math.floor(s / 60), sec = (s % 60);
     return `${m}:${sec.toFixed(1).padStart(4, "0")}`;
+  }
+
+  // ---- Auto-load video when served via HTTP ----
+  if (D.videoSrc) {
+    video.src = D.videoSrc;
+    video.style.display = "block";
+    novideo.style.display = "none";
+    document.getElementById("file-pick").style.display = "none";
   }
 
   // ---- Video loading (local file, no upload) ----

@@ -7,22 +7,21 @@ Thank you for your interest in improving InterLog! This project exists to help H
 ## Ways to Contribute
 
 ### Bug Reports
-Found a bug? Please [open an issue](https://github.com/yourusername/interlog/issues) with:
+Found a bug? Please [open an issue](https://github.com/blakepiper/interlog/issues) with:
 - Your operating system and Python version
 - Steps to reproduce
 - Expected vs actual behavior
 - Any error messages
 
 ### Feature Requests
-Have an idea? [Start a discussion](https://github.com/yourusername/interlog/discussions) to talk through:
+Have an idea? [Open an issue](https://github.com/blakepiper/interlog/issues) to discuss:
 - The use case
 - How it would help HCI researchers
-- Whether it fits the "simple and free" philosophy
+- Whether it fits the "simple and local" philosophy
 
 ### Documentation
 - Fix typos or unclear instructions
 - Add examples or use cases
-- Translate documentation (future)
 
 ### Code Contributions
 See below for development setup and guidelines.
@@ -31,11 +30,11 @@ See below for development setup and guidelines.
 
 ```bash
 # Clone the repo
-git clone https://github.com/yourusername/interlog.git
+git clone https://github.com/blakepiper/interlog.git
 cd interlog
 
-# Install in editable mode (changes to src/ take effect immediately)
-pip install -e .
+# Install in editable mode with dev + heatmap dependencies
+pip install -e ".[dev,heatmap]"
 
 # Confirm the environment is healthy
 interlog doctor
@@ -51,86 +50,65 @@ interlog analyze interlog-data/test_session
 
 ```
 src/interlog/
-  cli.py        # argparse entry point: record / analyze / view / doctor subcommands
-  recorder.py   # InteractionLogger - captures events to CSV
-  analyzer.py   # InteractionAnalyzer - statistics and intensity
-  screen.py     # ScreenRecorder - ffmpeg screen capture (record --screen)
-  viewer.py     # build_viewer() - generates the synced HTML viewer
-  viewer_template.html  # viewer UI (data injected at build time)
-  doctor.py     # environment + input-capture diagnostics
-pyproject.toml  # packaging + the `interlog` console script
+  cli.py               # Entry point: record / analyze / heatmap / view / list / doctor
+  recorder.py          # InteractionLogger — captures events to CSV
+  analyzer.py          # InteractionAnalyzer — statistics, intensity, sparkline
+  screen.py            # ScreenRecorder — ffmpeg screen capture (record --screen)
+  viewer.py            # build_viewer() — generates the synced HTML viewer
+  viewer_template.html # Viewer UI (data injected at build time)
+  serve.py             # Range-request HTTP server for view --serve
+  heatmap.py           # build_heatmap() — mouse density PNG (optional deps)
+  text_analysis.py     # Typed-text reconstruction and lexical stats
+  doctor.py            # Environment + input-capture diagnostics
+  branding.py          # ASCII banner
+pyproject.toml         # Packaging + the `interlog` console script
+tests/
+  test_interlog.py     # pytest suite (30 tests, headless, no pynput/ffmpeg required)
 ```
 
 ## Code Style
 
 - **Keep it simple**: This is for researchers, not developers
-- **Document everything**: Clear docstrings and comments
-- **No external dependencies** unless absolutely necessary (we only use `pynput`)
-- **Cross-platform**: Test on Windows/Mac/Linux if possible
+- **No unnecessary comments**: Well-named code is self-explanatory; only comment non-obvious *why*s
+- **Minimal dependencies**: Core install needs only `pynput` and `rich`; heavy deps (`matplotlib`, `numpy`, `Pillow`) are optional extras
+- **Cross-platform**: Test on Windows / Mac / Linux if possible
 - **Privacy-first**: Never add telemetry or network features
+
+## Running Tests
+
+```bash
+pytest
+```
+
+Tests are headless (no pynput or ffmpeg required) and run on all supported platforms via CI.
 
 ## Pull Request Process
 
 1. **Fork the repository**
 2. **Create a branch**: `git checkout -b feature/your-feature-name`
 3. **Make your changes**
-4. **Test thoroughly** on your platform
+4. **Run the test suite**: `pytest`
 5. **Update documentation** (README, QUICKSTART if needed)
-6. **Submit PR** with clear description of changes
+6. **Submit PR** with a clear description of changes
 
 ## Project Philosophy
 
 InterLog is designed to be:
-- **Free and open-source** - No paywalls, no accounts, no cloud
-- **Simple** - Researchers should be able to use it in 2 minutes
-- **Privacy-focused** - All data stays local
-- **Minimal dependencies** - Easy to install and maintain
-- **Cross-platform** - Works on Windows, Mac, Linux
+- **Free and open-source** — No paywalls, no accounts, no cloud
+- **Simple** — Researchers should be able to use it in 2 minutes
+- **Privacy-focused** — All data stays local
+- **Minimal dependencies** — Easy to install and maintain
+- **Cross-platform** — Works on Windows, Mac, Linux
 
 When adding features, ask: "Does this help HCI researchers without adding complexity?"
 
-## Roadmap Ideas (Future)
-
-If you're looking for ideas to contribute:
-
-### High Priority
-- [ ] Better error handling and user-friendly error messages
-- [ ] Executable binaries (PyInstaller) for non-Python users
-- [ ] Multi-monitor coordinate handling
-- [ ] More robust CSV writing (handle crashes gracefully)
-
-### Medium Priority
-- [ ] HTML/JS viewer for syncing video with interaction data
-- [ ] Heatmap generation from mouse movement data
-- [ ] Export to additional formats (JSON, Parquet)
-- [ ] PyPI package for `pip install interlog`
-
-### Low Priority
-- [ ] Real-time dashboard during recording
-- [ ] Plugin system for custom analyzers
-- [ ] Integration with common screen recorders
-
-## Testing
-
-Currently no automated tests (contributions welcome!). Manual testing checklist:
-
-- [ ] Basic capture works (mouse, keyboard, scroll)
-- [ ] Privacy mode correctly redacts keys
-- [ ] `record --screen` produces a playable .mp4 and stops cleanly on Ctrl+C
-- [ ] `interlog view` opens, loads a recording, and seeks on hot-spot/timeline click
-- [ ] Analyzer produces correct statistics
-- [ ] Files are created in correct locations
-- [ ] Help text is accurate (`interlog --help`, `interlog record --help`)
-
 ## Questions?
 
-- Open an issue for bugs
-- Start a discussion for features or questions
-- Check existing issues/discussions first
+Open an issue — bugs, features, or general questions are all welcome.
 
 ## Code of Conduct
 
-Be kind, constructive, and remember we're all here to help HCI researchers. No jerks.
+Be kind, constructive, and remember we're all here to help HCI researchers.
 
 ---
 

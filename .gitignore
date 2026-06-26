@@ -19,14 +19,18 @@ interlog-data/
 *transcript.txt
 *text.json
 
-# Keep the bundled example outputs
-!examples/*.csv
-!examples/*.json
+# Keep the bundled example inputs (but not generated analysis output)
+!examples/sample_events*.csv
+!examples/sample_metadata.json
 
 # Editor / OS
 .DS_Store
 .idea/
 .vscode/
 
-# Local AI assistant working notes (not part of the project)
+# Local development notes
 CLAUDE.md
+ROADMAP.md
+
+# Test cache
+.pytest_cache/

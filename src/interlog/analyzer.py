@@ -49,8 +49,6 @@ class InteractionAnalyzer:
 
     def load_events(self):
         """Load events from CSV file."""
-        print(f"Loading events from {self.events_file}...")
-
         with open(self.events_file, "r") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -62,15 +60,11 @@ class InteractionAnalyzer:
                         row[field] = int(float(row[field]))
                 self.events.append(row)
 
-        print(f"Loaded {len(self.events)} events")
-
     def calculate_statistics(self):
         """Calculate summary statistics from events."""
         if not self.events:
-            print("No events to analyze")
             return self.stats
 
-        print("Calculating statistics...")
 
         # Basic counts
         event_counts = defaultdict(int)
@@ -336,7 +330,6 @@ class InteractionAnalyzer:
         if bucket_size <= 0:
             raise ValueError("bucket_size must be greater than 0")
 
-        print(f"Calculating interaction intensity (bucket size: {bucket_size}s)...")
 
         if not self.events:
             return []
@@ -380,8 +373,6 @@ class InteractionAnalyzer:
         else:
             output_file = Path(output_file)
 
-        print(f"Saving summary to {output_file}...")
-
         with open(output_file, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["metric", "value"])
@@ -399,8 +390,6 @@ class InteractionAnalyzer:
 
         buckets = self.calculate_intensity(bucket_size)
 
-        print(f"Saving intensity data to {output_file}...")
-
         with open(output_file, "w", newline="") as f:
             if buckets:
                 writer = csv.DictWriter(f, fieldnames=buckets[0].keys())
@@ -409,58 +398,149 @@ class InteractionAnalyzer:
 
         return output_file
 
+    def _sparkline(self, bucket_size=5.0, width=52):
+        """Return a one-line Unicode block sparkline of interaction intensity."""
+        buckets = self.calculate_intensity(bucket_size)
+        if not buckets:
+            return ""
+        values = [b["total_interactions"] for b in buckets]
+        blocks = " ▁▂▃▄▅▆▇█"
+        max_v = max(values) or 1
+        chars = [blocks[min(8, int(v / max_v * 8))] for v in values]
+        if len(chars) > width:
+            # downsample by averaging
+            step = len(chars) / width
+            chars = [
+                blocks[min(8, int(
+                    sum(values[int(i * step):int((i + 1) * step)] or [0])
+                    / max(max_v, 1) * 8
+                ))]
+                for i in range(width)
+            ]
+        return "".join(chars)
+
     def print_summary(self):
-        """Print summary statistics to console."""
-        if not self.stats:
-            print("No statistics calculated")
+        """Print summary statistics to console using rich."""
+        from rich.console import Console
+        from rich.table import Table
+        from rich.columns import Columns
+        from rich import box
+
+        console = Console(highlight=False)
+        s = self.stats
+        if not s:
+            console.print("[dim]No statistics calculated[/dim]")
             return
 
-        print("\n" + "=" * 60)
-        print("INTERACTION LOG SUMMARY")
-        print("=" * 60)
+        console.print()
+        console.rule("[bold cyan]InterLog[/bold cyan]", style="cyan dim")
+        console.print(
+            f"  [bold white]{s['session_duration_formatted']}[/bold white]"
+            f"  [dim]·[/dim]  [cyan]{s['total_events']:,}[/cyan] events"
+            f"  [dim]·[/dim]  [cyan]{s['total_interactions']:,}[/cyan] interactions"
+        )
+        console.print()
 
-        print(f"\nSession Duration: {self.stats['session_duration_formatted']}")
-        print(f"Total Events: {self.stats['total_events']:,}")
-        print(f"Total Interactions: {self.stats['total_interactions']:,}")
+        # Left column: Interactions
+        t_events = Table(box=None, show_header=True, pad_edge=False,
+                         padding=(0, 3, 0, 2), show_edge=False)
+        t_events.add_column("Interactions", style="bold white", min_width=13)
+        t_events.add_column("", justify="right", style="cyan", min_width=7)
+        t_events.add_row("Mouse Moves", f"{s['total_mouse_moves']:,}")
+        t_events.add_row("Clicks", f"{s['total_clicks']:,}")
+        t_events.add_row("Scrolls", f"{s['total_scrolls']:,}")
+        t_events.add_row("Keypresses", f"{s['total_keypresses']:,}")
+        t_events.add_row("Drags", f"{s['total_drags']:,}")
 
-        print("\n--- Event Counts ---")
-        print(f"Mouse Moves: {self.stats['total_mouse_moves']:,}")
-        print(f"Clicks: {self.stats['total_clicks']:,}")
-        print(f"Scrolls: {self.stats['total_scrolls']:,}")
-        print(f"Keypresses: {self.stats['total_keypresses']:,}")
-        print(f"Drags: {self.stats['total_drags']:,}")
+        # Right column: Rates per minute
+        t_rates = Table(box=None, show_header=True, pad_edge=False,
+                        padding=(0, 3, 0, 2), show_edge=False)
+        t_rates.add_column("Per Minute", style="bold white", min_width=13)
+        t_rates.add_column("", justify="right", style="cyan", min_width=7)
+        t_rates.add_row("Clicks", f"{s['clicks_per_minute']:.1f}")
+        t_rates.add_row("Actions", f"{s['actions_per_minute']:.1f}")
+        t_rates.add_row("Keypresses", f"{s['keypresses_per_minute']:.1f}")
 
-        print("\n--- Rates (per minute) ---")
-        print(f"Clicks/min: {self.stats['clicks_per_minute']:.2f}")
-        print(f"Actions/min: {self.stats['actions_per_minute']:.2f}")
-        print(f"Keypresses/min: {self.stats['keypresses_per_minute']:.2f}")
+        console.print(Columns([t_events, t_rates], equal=False, expand=False, padding=(0, 2)))
+        console.print()
 
-        print("\n--- Pointer ---")
-        print(f"Mouse Distance: {self.stats['total_mouse_distance_px']:,.0f} px "
-              f"({self.stats['mouse_distance_per_minute']:,.0f}/min)")
-        print(f"Mean Pointer Speed: {self.stats['mean_pointer_speed_px_s']:,.0f} px/s")
-        print(f"Active / Idle: {self.stats['active_time_seconds']:.1f}s / "
-              f"{self.stats['idle_time_seconds']:.1f}s")
-        print(f"Time to First Action: {self.stats['time_to_first_interaction_seconds']:.2f}s")
+        # Left: Pointer
+        t_ptr = Table(box=None, show_header=True, pad_edge=False,
+                      padding=(0, 3, 0, 2), show_edge=False)
+        t_ptr.add_column("Pointer", style="bold white", min_width=16)
+        t_ptr.add_column("", justify="right", style="cyan", min_width=12)
+        t_ptr.add_row("Distance", f"{s['total_mouse_distance_px']:,.0f} px")
+        t_ptr.add_row("Speed", f"{s['mean_pointer_speed_px_s']:,.0f} px/s")
+        t_ptr.add_row("Active / Idle",
+                      f"{s['active_time_seconds']:.1f}s / {s['idle_time_seconds']:.1f}s")
+        t_ptr.add_row("Time to First", f"{s['time_to_first_interaction_seconds']:.2f}s")
 
-        print("\n--- Keyboard ---")
-        cpm = self.stats["typing_chars_per_minute"]
+        # Right: Keyboard
+        t_kbd = Table(box=None, show_header=True, pad_edge=False,
+                      padding=(0, 3, 0, 2), show_edge=False)
+        t_kbd.add_column("Keyboard", style="bold white", min_width=16)
+        t_kbd.add_column("", justify="right", style="cyan", min_width=12)
+        cpm = s["typing_chars_per_minute"]
         if cpm is None:
-            print("Typing: (privacy mode - key identities not recorded)")
+            t_kbd.add_row("Typing", "[dim]privacy mode[/dim]")
         else:
-            print(f"Typing Speed: {cpm:.0f} chars/min")
-            print(f"Corrections: {self.stats['backspaces']} "
-                  f"({self.stats['correction_rate'] * 100:.1f}% of keypresses)")
-        print(f"Mean Inter-key Interval: {self.stats['mean_interkey_interval_seconds']:.3f}s")
+            t_kbd.add_row("Typing speed", f"{cpm:.0f} cpm")
+            t_kbd.add_row("Corrections",
+                          f"{s['backspaces']} ({s['correction_rate'] * 100:.1f}%)")
+        t_kbd.add_row("Inter-key interval", f"{s['mean_interkey_interval_seconds']:.3f}s")
 
-        print("\n--- Behavioral Patterns ---")
-        print(f"Rage Clicks: {self.stats['rage_clicks_detected']}")
-        print(f"Dead Clicks: {self.stats['dead_clicks']}")
-        print(f"Double Clicks: {self.stats['double_clicks']}")
-        print(f"Hesitations (pauses > {HESITATION_THRESHOLD_S:.0f}s): {self.stats['hesitations']}")
-        print(f"Longest / Median / Avg Pause: {self.stats['longest_pause_seconds']:.2f}s / "
-              f"{self.stats['median_pause_seconds']:.2f}s / {self.stats['average_pause_seconds']:.3f}s")
-        print(f"Total Scroll Distance: {self.stats['total_scroll_distance']:,} pixels")
-        print(f"\nStruggle Score: {self.stats['struggle_score']:.2f}  (higher = more friction)")
+        console.print(Columns([t_ptr, t_kbd], equal=False, expand=False, padding=(0, 2)))
+        console.print()
 
-        print("\n" + "=" * 60 + "\n")
+        # Behavioral patterns
+        console.rule("[bold white]Behavioral Patterns[/bold white]", style="dim")
+
+        def _val(n, warn_gt=0, bad_gt=None, fmt=str):
+            v = fmt(n)
+            if bad_gt is not None and n > bad_gt:
+                return f"[red]{v}[/red]"
+            if n > warn_gt:
+                return f"[yellow]{v}[/yellow]"
+            return f"[green]{v}[/green]"
+
+        rage = s["rage_clicks_detected"]
+        dead = s["dead_clicks"]
+        double = s["double_clicks"]
+        hesit = s["hesitations"]
+        console.print(
+            f"  Rage clicks  {_val(rage, bad_gt=1)}   "
+            f"Dead clicks  {_val(dead, warn_gt=2, bad_gt=5)}   "
+            f"Double clicks  {_val(double, warn_gt=3)}   "
+            f"Hesitations  {_val(hesit, warn_gt=2, bad_gt=6)}"
+        )
+        console.print(
+            f"  Longest pause  [white]{s['longest_pause_seconds']:.2f}s[/white]   "
+            f"Median pause  [white]{s['median_pause_seconds']:.3f}s[/white]   "
+            f"Scroll distance  [white]{s['total_scroll_distance']:,} px[/white]"
+        )
+        console.print()
+
+        # Struggle score
+        score = s["struggle_score"]
+        if score < 2:
+            sc, sl = "green", "LOW"
+        elif score < 5:
+            sc, sl = "yellow", "MODERATE"
+        else:
+            sc, sl = "red", "HIGH"
+        console.print(
+            f"  Struggle Score  [{sc}]{score:.2f} / min[/{sc}]  "
+            f"[bold {sc}][{sl}][/bold {sc}]  "
+            f"[dim](higher = more friction)[/dim]"
+        )
+        console.print()
+
+        # Activity sparkline
+        spark = self._sparkline()
+        if spark and spark.strip():
+            dur = s["session_duration_formatted"]
+            dashes = max(2, len(spark) - len(dur) - 1)
+            console.print(f"  [bold white]Activity[/bold white]  [dim](5s buckets)[/dim]")
+            console.print(f"  [cyan]{spark}[/cyan]")
+            console.print(f"  [dim]0:00 {'─' * dashes} {dur}[/dim]")
+            console.print()

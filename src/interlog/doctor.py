@@ -8,47 +8,94 @@ permission issues on macOS/Linux).
 import sys
 
 
-def _check_python_version():
-    """Check Python version is 3.7+."""
+def _ok(console, msg):
+    console.print(f"  [bold green]✓[/bold green]  {msg}")
+
+
+def _warn(console, msg):
+    console.print(f"  [bold yellow]![/bold yellow]  {msg}")
+
+
+def _fail(console, msg):
+    console.print(f"  [bold red]✗[/bold red]  {msg}")
+
+
+def _check_python_version(console):
     v = sys.version_info
     if (v.major, v.minor) >= (3, 7):
-        print(f"[OK] Python {v.major}.{v.minor}.{v.micro}")
+        _ok(console, f"Python [cyan]{v.major}.{v.minor}.{v.micro}[/cyan]")
         return True
-    print(f"[FAIL] Python {v.major}.{v.minor}.{v.micro} (need 3.7+)")
+    _fail(console, f"Python [cyan]{v.major}.{v.minor}.{v.micro}[/cyan]  [dim](need 3.7+)[/dim]")
     return False
 
 
-def _check_pynput():
-    """Check if pynput is installed and importable."""
+def _check_pynput(console):
     try:
         import importlib.metadata
-        import pynput  # noqa: F401  (import proves it loads)
+        import pynput  # noqa: F401
         try:
             version = importlib.metadata.version("pynput")
         except importlib.metadata.PackageNotFoundError:
             version = "unknown"
-        print(f"[OK] pynput is installed (version {version})")
+        _ok(console, f"pynput [cyan]{version}[/cyan]")
         return True
     except ImportError:
-        print("[FAIL] pynput is NOT installed")
-        print("  Run: pip install interlog   (or: pip install pynput)")
+        _fail(console, "pynput not installed")
+        console.print("       [dim]Run: pip install interlog   (or: pip install pynput)[/dim]")
         return False
 
 
-def _run_live_test():
-    """Start listeners and report captured events. Press ESC to stop."""
+def _check_ffmpeg(console):
+    import shutil
+    path = shutil.which("ffmpeg")
+    if path:
+        _ok(console, f"ffmpeg  [dim]({path})[/dim]")
+    else:
+        _warn(console, "ffmpeg not found  [dim](optional — only needed for record --screen)[/dim]")
+
+
+def _check_rich(console):
+    try:
+        import importlib.metadata
+        version = importlib.metadata.version("rich")
+        _ok(console, f"rich [cyan]{version}[/cyan]")
+    except Exception:
+        _warn(console, "rich not installed  [dim](install for better output)[/dim]")
+
+
+def _check_heatmap_deps(console):
+    import importlib.metadata
+    missing = []
+    for pkg, import_name in [("matplotlib", "matplotlib"), ("numpy", "numpy"), ("Pillow", "PIL")]:
+        try:
+            __import__(import_name)
+        except ImportError:
+            missing.append(pkg)
+    if missing:
+        _warn(console, f"Heatmap deps missing: {', '.join(missing)}  "
+              f"[dim](optional — needed for 'interlog heatmap')[/dim]")
+        console.print(f"       [dim]pip install 'interlog[heatmap]'[/dim]")
+    else:
+        try:
+            mpl_v = importlib.metadata.version("matplotlib")
+        except Exception:
+            mpl_v = "?"
+        _ok(console, f"Heatmap deps  [dim](matplotlib {mpl_v})[/dim]")
+
+
+def _run_live_test(console):
     from pynput import keyboard, mouse
 
-    print("\nLive capture test")
-    print("-" * 40)
-    print("Move the mouse, click, scroll, or type to generate events.")
-    print("Press ESC to finish.\n")
+    console.print()
+    console.rule("[bold]Live Capture Test[/bold]", style="cyan dim")
+    console.print("  Move the mouse, click, scroll, or type to generate events.")
+    console.print("  Press [bold]ESC[/bold] to finish.\n")
 
     count = {"n": 0}
 
     def bump(label):
         count["n"] += 1
-        print(f"  {label} - events: {count['n']}", end="\r")
+        print(f"\r  {label:<22}  events captured: {count['n']}", end="", flush=True)
 
     def on_release(key):
         if key == keyboard.Key.esc:
@@ -74,49 +121,48 @@ def _run_live_test():
         mouse_listener.stop()
         keyboard_listener.stop()
 
-    print(f"\n\nCaptured {count['n']} events.")
+    print()
+    console.print()
     if count["n"] == 0:
-        print("[WARNING] No events captured - likely an OS permissions issue:")
-        print("  - macOS: System Settings > Privacy & Security > Accessibility,")
-        print("    then add your terminal/IDE.")
-        print("  - Linux: add your user to the 'input' group, or note that")
-        print("    pynput has limited support under Wayland (try X11).")
+        _fail(console, f"No events captured — likely an OS permissions issue")
+        console.print("  [dim]macOS: System Settings › Privacy › Accessibility → add your terminal[/dim]")
+        console.print("  [dim]Linux: add your user to the 'input' group, or check Wayland vs X11[/dim]")
         return False
-    print("[OK] Input capture is working.")
+    _ok(console, f"Input capture working  [dim]({count['n']} events captured)[/dim]")
     return True
-
-
-def _check_ffmpeg():
-    """Check for ffmpeg, which is optional (only `record --screen` needs it)."""
-    import shutil
-
-    path = shutil.which("ffmpeg")
-    if path:
-        print(f"[OK] ffmpeg found ({path})")
-    else:
-        print("[--] ffmpeg not found (optional; only needed for 'record --screen')")
-    return True  # never fatal
 
 
 def run_doctor(live=False):
     """Run environment checks. Returns an exit code (0 = healthy)."""
-    print("InterLog environment check")
-    print("=" * 40)
+    from rich.console import Console
 
-    python_ok = _check_python_version()
-    pynput_ok = _check_pynput()
-    _check_ffmpeg()
+    console = Console(highlight=False)
 
-    print("=" * 40)
+    console.print()
+    console.rule("[bold cyan]InterLog Doctor[/bold cyan]", style="cyan dim")
+    console.print()
+
+    python_ok = _check_python_version(console)
+    pynput_ok = _check_pynput(console)
+    _check_ffmpeg(console)
+    _check_rich(console)
+    _check_heatmap_deps(console)
+
+    console.print()
     if python_ok and pynput_ok:
-        print("Core checks passed.")
+        console.print("  [green]Core checks passed.[/green]")
     else:
-        print("Some checks failed - see messages above.")
+        console.print("  [red]Some checks failed — see above.[/red]")
+        console.print()
         return 1
 
     if live and pynput_ok:
-        return 0 if _run_live_test() else 1
+        result = _run_live_test(console)
+        console.print()
+        return 0 if result else 1
 
     if not live:
-        print("Tip: run 'interlog doctor --live' to test input capture.")
+        console.print("  [dim]Tip: run 'interlog doctor --live' to confirm input capture works.[/dim]")
+
+    console.print()
     return 0

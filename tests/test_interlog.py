@@ -13,7 +13,9 @@ import pytest
 
 from interlog.analyzer import InteractionAnalyzer, base_prefix
 from interlog.cli import _resolve_events_path
+from interlog.heatmap import _infer_bounds, _rage_timestamps
 from interlog.recorder import EVENT_FIELDS, InteractionLogger
+from interlog.serve import _parse_range, serve_viewer
 from interlog.text_analysis import is_redacted, lexical_stats, reconstruct_text
 from interlog.viewer import build_viewer
 
@@ -253,3 +255,84 @@ def test_build_viewer_rejects_empty(tmp_path):
     _write_events(events, [])
     with pytest.raises(ValueError):
         build_viewer(events, open_browser=False)
+
+
+# --- serve -----------------------------------------------------------------
+
+def test_parse_range_full():
+    assert _parse_range("bytes=0-99", 200) == (0, 99)
+
+
+def test_parse_range_suffix():
+    assert _parse_range("bytes=-100", 200) == (100, 199)
+
+
+def test_parse_range_open_end():
+    assert _parse_range("bytes=50-", 200) == (50, 199)
+
+
+def test_parse_range_unsatisfiable():
+    with pytest.raises(ValueError):
+        _parse_range("bytes=200-300", 100)
+
+
+def test_parse_range_bad_prefix():
+    with pytest.raises(ValueError):
+        _parse_range("chunks=0-10", 100)
+
+
+def test_serve_viewer_starts_and_stops(tmp_path):
+    html = tmp_path / "viewer.html"
+    html.write_text("<html></html>")
+    httpd, url = serve_viewer(tmp_path, "viewer.html")
+    assert url.startswith("http://127.0.0.1:")
+    assert "viewer.html" in url
+    httpd.server_close()
+
+
+# --- heatmap helpers -------------------------------------------------------
+
+def test_infer_bounds_from_events():
+    events = [
+        {"event_type": "mouse_move", "x": 100, "y": 200},
+        {"event_type": "mouse_move", "x": 800, "y": 600},
+        {"event_type": "mouse_down", "x": 999, "y": 999},  # clicks excluded
+    ]
+    w, h = _infer_bounds(events)
+    assert w == 900   # max x (800) + 100
+    assert h == 700   # max y (600) + 100
+
+
+def test_rage_timestamps_detects_burst():
+    clicks = [
+        {"timestamp": 0.1, "x": 50, "y": 50},
+        {"timestamp": 0.2, "x": 52, "y": 51},
+        {"timestamp": 0.3, "x": 51, "y": 50},
+    ]
+    rage = _rage_timestamps(clicks)
+    assert len(rage) == 3
+
+
+def test_rage_timestamps_ignores_spread_clicks():
+    clicks = [
+        {"timestamp": 0.1, "x": 50,  "y": 50},
+        {"timestamp": 0.2, "x": 500, "y": 500},  # too far
+        {"timestamp": 0.3, "x": 52,  "y": 51},
+    ]
+    assert len(_rage_timestamps(clicks)) == 0
+
+
+# --- sparkline -------------------------------------------------------------
+
+def test_sparkline_non_empty(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": float(i), "event_type": "mouse_down", "x": 1, "y": 1}
+        for i in range(20)
+    ])
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    a.calculate_statistics()
+    spark = a._sparkline()
+    assert len(spark) > 0
+    assert all(c in " ▁▂▃▄▅▆▇█" for c in spark)

@@ -36,7 +36,7 @@ def _read_metadata(events_file):
     return {}
 
 
-def build_viewer(events_file, output=None, bucket_size=2.0, open_browser=True):
+def build_viewer(events_file, output=None, bucket_size=2.0, open_browser=True, video_src=None):
     """Generate the viewer HTML for a session. Returns the output path."""
     events_file = Path(events_file)
 
@@ -84,6 +84,7 @@ def build_viewer(events_file, output=None, bucket_size=2.0, open_browser=True):
         "duration": round(duration, 3),
         "offset": offset,
         "captureRegion": meta.get("capture_region"),
+        "videoSrc": video_src,
         "buckets": buckets,
         "markers": markers,
         "rageClicks": rage,
