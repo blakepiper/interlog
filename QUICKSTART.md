@@ -24,11 +24,14 @@ interlog record --name my_session
 
 # 3. Press Ctrl+C to stop — session is saved automatically
 
-# 4. Analyze
+# 4. Analyze (statistics panel + output files)
 interlog analyze interlog-data/my_session
 
 # 5. Generate a heatmap
 interlog heatmap interlog-data/my_session
+
+# 6. Generate a shareable HTML report (embeds the heatmap)
+interlog report interlog-data/my_session
 ```
 
 Everything goes into `interlog-data/my_session/` — nothing scattered in your
@@ -51,6 +54,18 @@ the video to that moment. Press Ctrl+C in the terminal to stop the server.
 
 If the video and log are slightly out of sync, nudge the **Sync offset** field
 until a known click lines up.
+
+## Cross-session aggregation
+
+After recording multiple participants:
+
+```bash
+interlog analyze --batch
+```
+
+Prints a table comparing all sessions in `./interlog-data/` — duration,
+clicks/min, rage clicks, struggle score — with a mean ± SD row, and writes
+`aggregate.csv` for further analysis in R or Excel.
 
 ## Browse all sessions
 
@@ -79,7 +94,10 @@ interlog analyze interlog-data/participant_01_checkout
 # 5. Generate heatmap
 interlog heatmap interlog-data/participant_01_checkout
 
-# 6. Open viewer and align video with the sync-offset field
+# 6. Generate an HTML report
+interlog report interlog-data/participant_01_checkout
+
+# 7. Open viewer and align video with the sync-offset field
 interlog view interlog-data/participant_01_checkout
 ```
 
@@ -121,6 +139,7 @@ confusion. Check `longest_pause_seconds` in the summary.
 3. **Heatmap `--sigma`** — increase for sparser sessions, decrease for dense ones
 4. **`--no-text`** — skip transcript reconstruction if you don't need it (faster)
 5. **Privacy mode** — use it for any session where key identities aren't relevant to your research question
+6. **Run `heatmap` before `report`** — `interlog report` embeds `heatmap.png` if present; generate it first for the richest report
 
 ## Troubleshooting
 

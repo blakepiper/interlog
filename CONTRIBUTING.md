@@ -50,20 +50,21 @@ interlog analyze interlog-data/test_session
 
 ```
 src/interlog/
-  cli.py               # Entry point: record / analyze / heatmap / view / list / doctor
+  cli.py               # Entry point: all subcommands
   recorder.py          # InteractionLogger — captures events to CSV
-  analyzer.py          # InteractionAnalyzer — statistics, intensity, sparkline
+  analyzer.py          # InteractionAnalyzer — statistics, intensity, sparkline, batch_analyze
   screen.py            # ScreenRecorder — ffmpeg screen capture (record --screen)
-  viewer.py            # build_viewer() — generates the synced HTML viewer
+  viewer.py            # build_viewer() — generates the synced HTML timeline viewer
   viewer_template.html # Viewer UI (data injected at build time)
   serve.py             # Range-request HTTP server for view --serve
   heatmap.py           # build_heatmap() — mouse density PNG (optional deps)
+  report.py            # build_report() — self-contained HTML report with embedded heatmap
   text_analysis.py     # Typed-text reconstruction and lexical stats
   doctor.py            # Environment + input-capture diagnostics
   branding.py          # ASCII banner
 pyproject.toml         # Packaging + the `interlog` console script
 tests/
-  test_interlog.py     # pytest suite (30 tests, headless, no pynput/ffmpeg required)
+  test_interlog.py     # pytest suite (34 tests, headless, no pynput/ffmpeg required)
 ```
 
 ## Code Style

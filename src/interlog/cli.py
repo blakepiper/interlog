@@ -275,6 +275,7 @@ def _cmd_heatmap(args):
             return 1
 
     console.print(f"  [green]✓[/green]  Heatmap → [white]{output}[/white]")
+    console.print(f"  [dim]Tip: run[/dim] [bold cyan]interlog report[/bold cyan] [white]{Path(args.session).resolve()}[/white] [dim]to embed this in a shareable HTML report.[/dim]")
 
     if not args.no_open:
         try:
@@ -453,6 +454,7 @@ def _cmd_analyze(args):
     console.print(f"  [bold cyan]interlog heatmap[/bold cyan] [white]{session_dir}[/white]")
     serve = " [dim]--serve[/dim]" if (session_dir / "recording.mp4").exists() else ""
     console.print(f"  [bold cyan]interlog view[/bold cyan] [white]{session_dir}[/white]{serve}")
+    console.print(f"  [bold cyan]interlog report[/bold cyan] [white]{session_dir}[/white]")
     console.print()
 
     return 0
