@@ -88,10 +88,6 @@ class InteractionLogger:
         self.events.append(event)
         self.total_events += 1
 
-        # Print event count every 50 events for feedback
-        if self.total_events % 50 == 0:
-            print(f"  Events captured: {self.total_events}", end="\r")
-
     # Mouse event handlers
     def on_move(self, x, y):
         """Handle mouse move events."""
@@ -146,6 +142,11 @@ class InteractionLogger:
 
     def start(self):
         """Start capturing interactions. Blocks until interrupted."""
+        from rich.console import Console
+        from rich.live import Live
+
+        console = Console(highlight=False)
+
         self.start_time = time.time()
         self._mono_start = time.monotonic()
 
@@ -156,14 +157,18 @@ class InteractionLogger:
             self.video_start_offset = self._mono_start - self.video_first_frame_time
 
         print_banner()
-        print()
+        console.print()
+        console.rule("[bold cyan]Recording[/bold cyan]", style="cyan dim")
+        console.print()
+        console.print(f"  [dim]Session[/dim]  [white]{self.session_name}[/white]")
+        privacy_str = "[yellow]on[/yellow]" if self.privacy_mode else "[dim]off[/dim]"
+        console.print(f"  [dim]Privacy[/dim]  {privacy_str}")
+        console.print(f"  [dim]Output[/dim]   [white]{self.session_dir}[/white]")
+        if self.video_file:
+            console.print(f"  [dim]Video[/dim]    [white]{Path(self.video_file).name}[/white]")
+        console.print()
 
-        print(f"Session:  {self.session_name}")
-        print(f"Privacy:  {'ENABLED' if self.privacy_mode else 'DISABLED'}")
-        print(f"Output:   {self.session_dir.absolute()}")
-        print("\nRecording... Press Ctrl+C to stop.\n")
-
-        # Save metadata
+        # Save initial metadata
         metadata = {
             "session_name": self.session_name,
             "start_time": datetime.now().isoformat(),
@@ -201,19 +206,28 @@ class InteractionLogger:
             writer.writeheader()
 
         try:
-            while not self.stop_event.is_set():
-                time.sleep(0.5)
-                # Flush every tick when anything is buffered, so an unclean exit
-                # loses at most ~0.5s of events rather than up to FLUSH_THRESHOLD.
-                if self.events:
-                    self._flush_events()
+            with Live("", refresh_per_second=2, console=console, transient=True) as live:
+                while not self.stop_event.is_set():
+                    time.sleep(0.5)
+                    # Flush every tick so an unclean exit loses at most ~0.5s of events.
+                    if self.events:
+                        self._flush_events()
+                    elapsed = self._get_timestamp()
+                    m, s = divmod(int(elapsed), 60)
+                    live.update(
+                        f"  [green]●[/green]  [bold white]{self.total_events:,}[/bold white] events"
+                        f"  [dim]{m}:{s:02d}  ·  Ctrl+C to stop[/dim]"
+                    )
         except KeyboardInterrupt:
-            print("\n\nStopping...")
+            pass
         finally:
             self.stop()
 
     def stop(self):
         """Stop capturing and save all events."""
+        from rich.console import Console
+        console = Console(highlight=False)
+
         self.stop_event.set()
 
         if self.mouse_listener:
@@ -224,41 +238,49 @@ class InteractionLogger:
         # Stop any companion screen recording (finalizes the video file).
         if self.stop_callback:
             try:
-                print("Finalizing screen recording...")
+                console.print("  [dim]Finalizing screen recording…[/dim]")
                 self.stop_callback()
             except Exception as e:
-                print(f"Warning: could not stop screen recorder cleanly: {e}")
+                console.print(f"  [yellow]![/yellow]  Screen recorder: {e}")
 
         # Flush remaining events
         self._flush_events()
 
-        # Update metadata with end time
+        # Update metadata with end time and totals
         try:
             with open(self.metadata_file, "r") as f:
                 metadata = json.load(f)
-
             metadata["end_time"] = datetime.now().isoformat()
             metadata["duration_seconds"] = self._get_timestamp()
             metadata["total_events"] = self.total_events
-
             with open(self.metadata_file, "w") as f:
                 json.dump(metadata, f, indent=2)
         except Exception as e:
-            print(f"Warning: Could not update metadata: {e}")
+            console.print(f"  [yellow]![/yellow]  Could not update metadata: {e}")
 
-        print("\nSession saved!")
-        print(f"Events:   {self.events_file}")
-        print(f"Metadata: {self.metadata_file}")
-        if self.video_file is not None:
-            print(f"Video:    {self.video_file}")
-        print(f"\nTotal events captured: {self.total_events}")
-        print(f"Duration: {self._get_timestamp():.2f} seconds")
-        if self.video_file is not None:
-            print("\nOpen the synced viewer:")
-            print(f"  interlog view {self.events_file}")
+        dur = self._get_timestamp()
+        m, s = divmod(int(dur), 60)
+        session = str(self.session_dir)
+
+        console.print()
+        console.rule("[dim]Session saved[/dim]", style="dim")
+        console.print()
+        console.print(f"  [green]✓[/green]  [bold white]{self.session_name}[/bold white]  [dim]→[/dim]  [white]{session}[/white]")
+        console.print()
+        console.print(f"  [dim]Events  [/dim]  [cyan]{self.total_events:,}[/cyan]")
+        console.print(f"  [dim]Duration[/dim]  [cyan]{m}:{s:02d}[/cyan]")
+        if self.video_file:
+            console.print(f"  [dim]Video   [/dim]  [white]{Path(self.video_file).name}[/white]")
+
+        console.print()
+        console.rule("[dim]Next steps[/dim]", style="dim")
+        console.print(f"  [bold cyan]interlog analyze[/bold cyan] [white]{session}[/white]")
+        console.print(f"  [bold cyan]interlog heatmap[/bold cyan] [white]{session}[/white]")
+        if self.video_file:
+            console.print(f"  [bold cyan]interlog view[/bold cyan] [white]{session}[/white] [dim]--serve[/dim]")
         else:
-            print("\nRun the analyzer to generate statistics:")
-            print(f"  interlog analyze {self.events_file}")
+            console.print(f"  [bold cyan]interlog view[/bold cyan] [white]{session}[/white]")
+        console.print()
 
     def _flush_events(self):
         """Write accumulated events to CSV file."""

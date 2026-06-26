@@ -28,7 +28,7 @@ Examples:
   interlog record -o ./sessions                Write session files to ./sessions
   interlog record --screen --name p01          Record the screen + interactions together
   interlog list                                List all sessions in ./interlog-data/
-  interlog list -o ./sessions                  List sessions from a custom directory
+  interlog list -d ./sessions                  List sessions from a custom directory
   interlog analyze p01                         Generate statistics for a session
   interlog analyze p01 -b 10 --json            Custom bucket size, also emit JSON
   interlog view p01                            Open the timeline viewer for a session
@@ -98,7 +98,7 @@ Examples:
         "list", help="List all recorded sessions."
     )
     p_list.add_argument(
-        "-o", "--output", default="interlog-data", metavar="DIR",
+        "-d", "--dir", default="interlog-data", metavar="DIR", dest="data_dir",
         help="Data directory to list sessions from (default: ./interlog-data).",
     )
     p_list.set_defaults(func=_cmd_list)
@@ -262,7 +262,7 @@ def _cmd_list(args):
     from datetime import timedelta
 
     console = Console(highlight=False)
-    data_dir = Path(args.output)
+    data_dir = Path(args.data_dir)
 
     console.print()
     console.rule(
@@ -297,6 +297,7 @@ def _cmd_list(args):
             "privacy": meta.get("privacy_mode", False),
             "has_video": (session_dir / "recording.mp4").exists(),
             "has_summary": (session_dir / "summary.csv").exists(),
+            "has_heatmap": (session_dir / "heatmap.png").exists(),
         })
 
     if not sessions:
@@ -319,6 +320,7 @@ def _cmd_list(args):
     table.add_column("Events", min_width=7, justify="right", style="cyan")
     table.add_column("Screen", min_width=6, justify="center")
     table.add_column("Analyzed", min_width=8, justify="center")
+    table.add_column("Heatmap", min_width=7, justify="center")
     table.add_column("Privacy", min_width=7, justify="center")
 
     for s in sessions:
@@ -330,6 +332,7 @@ def _cmd_list(args):
             f"{s['events']:,}",
             "[green]✓[/green]" if s["has_video"] else "[dim]–[/dim]",
             "[green]✓[/green]" if s["has_summary"] else "[dim]–[/dim]",
+            "[green]✓[/green]" if s["has_heatmap"] else "[dim]–[/dim]",
             "[yellow]on[/yellow]" if s["privacy"] else "[dim]–[/dim]",
         )
 
@@ -399,6 +402,13 @@ def _cmd_analyze(args):
         _analyze_text(analyzer, events_path, summary_path.parent, console)
     else:
         console.print()
+
+    session_dir = events_path.parent
+    console.rule("[dim]Next steps[/dim]", style="dim")
+    console.print(f"  [bold cyan]interlog heatmap[/bold cyan] [white]{session_dir}[/white]")
+    serve = " [dim]--serve[/dim]" if (session_dir / "recording.mp4").exists() else ""
+    console.print(f"  [bold cyan]interlog view[/bold cyan] [white]{session_dir}[/white]{serve}")
+    console.print()
 
     return 0
 
