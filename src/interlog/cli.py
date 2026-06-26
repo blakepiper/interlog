@@ -6,6 +6,7 @@ Exposes a single ``interlog`` command with subcommands:
     interlog analyze   Generate statistics from a recorded session.
     interlog view      Open the synced HTML timeline viewer.
     interlog list      List all recorded sessions.
+    interlog report    Generate a self-contained HTML report.
     interlog doctor    Check the environment and input-capture permissions.
 """
 
@@ -35,6 +36,7 @@ Examples:
   interlog analyze --batch ./sessions          Aggregate sessions from a custom directory
   interlog view p01                            Open the timeline viewer for a session
   interlog doctor --live                       Verify input capture works
+  interlog report p01                          Generate a shareable HTML report
 """,
     )
     parser.add_argument(
@@ -163,6 +165,27 @@ Examples:
         help="Generate the HTML without opening a browser.",
     )
     p_view.set_defaults(func=_cmd_view)
+
+    # report
+    p_report = sub.add_parser(
+        "report", help="Generate a self-contained HTML report for a session."
+    )
+    p_report.add_argument(
+        "session", help="Session folder or events CSV."
+    )
+    p_report.add_argument(
+        "-o", "--output", default=None,
+        help="Output HTML path (default: <session>/report.html).",
+    )
+    p_report.add_argument(
+        "-b", "--bucket-size", type=float, default=5.0,
+        help="Activity timeline bucket size in seconds (default: 5.0).",
+    )
+    p_report.add_argument(
+        "--no-open", action="store_true",
+        help="Write the report without opening it in a browser.",
+    )
+    p_report.set_defaults(func=_cmd_report)
 
     # doctor
     p_doctor = sub.add_parser(
@@ -674,6 +697,63 @@ def _cmd_view(args):
     return 0
 
 
+def _cmd_report(args):
+    import sys
+    import webbrowser
+    from rich.console import Console
+    from interlog.report import build_report
+
+    console = Console(highlight=False)
+    session_path = Path(args.session)
+    if not session_path.exists():
+        console.print(f"[red]Error:[/red] not found: {session_path}")
+        return 1
+
+    if args.bucket_size <= 0:
+        console.print("[red]Error:[/red] --bucket-size must be greater than 0.")
+        return 1
+
+    with console.status("[cyan]Building report…[/cyan]", spinner="dots"):
+        try:
+            output = build_report(
+                session_path,
+                output=args.output,
+                bucket_size=args.bucket_size,
+            )
+        except (FileNotFoundError, ValueError) as e:
+            console.print(f"[red]Error:[/red] {e}")
+            return 1
+
+    console.print()
+    console.rule("[bold cyan]InterLog Report[/bold cyan]", style="cyan dim")
+    console.print(f"\n  [bold white]{output}[/bold white]\n")
+
+    heatmap = output.parent / "heatmap.png"
+    if not heatmap.exists():
+        console.print(
+            "  [yellow]![/yellow]  No heatmap found — run "
+            f"[bold cyan]interlog heatmap[/bold cyan] [white]{session_path}[/white] "
+            "then re-run this command to embed it."
+        )
+
+    console.print()
+
+    if not args.no_open:
+        try:
+            if sys.platform == "darwin":
+                import subprocess
+                subprocess.Popen(["open", str(output)])
+            elif sys.platform == "win32":
+                import os
+                os.startfile(str(output))
+            else:
+                webbrowser.open(output.resolve().as_uri())
+        except Exception:
+            pass
+
+    return 0
+
+
 def _cmd_doctor(args):
     from interlog.doctor import run_doctor
 
@@ -704,6 +784,7 @@ def main(argv=None):
         table.add_row("analyze", "Compute session statistics  [dim](add --batch to aggregate a directory)[/dim]")
         table.add_row("heatmap", "Generate a mouse movement and click heatmap PNG")
         table.add_row("view", "Open the synced timeline viewer  [dim](add --serve for auto video loading)[/dim]")
+        table.add_row("report", "Generate a shareable HTML report  [dim](embeds heatmap + stats)[/dim]")
         table.add_row("doctor", "Check your environment")
         console.print(table)
         console.print("\n  [dim]Run 'interlog <command> --help' for details.[/dim]\n")
