@@ -1,180 +1,148 @@
-# InterLog Quick Start Guide
+# InterLog Quick Start
 
-## Installation (30 seconds)
+## Installation
 
 ```bash
-# 1. Install the package (provides the `interlog` command)
+git clone https://github.com/blakepiper/interlog.git
+cd interlog
 pip install .
 
-# 2. (optional) Confirm everything is set up
+# Optional: add heatmap support (matplotlib, numpy, Pillow)
+pip install ".[heatmap]"
+
+# Confirm everything is working
 interlog doctor
-
-# 3. You're ready!
 ```
 
-## Your First Session (2 minutes)
-
-### Step 1: Start Recording
+## Your First Session
 
 ```bash
-interlog record
+# 1. Start recording
+interlog record --name my_session
+
+# 2. Use the computer normally (mouse, keyboard, scroll)
+
+# 3. Press Ctrl+C to stop — session is saved automatically
+
+# 4. Analyze
+interlog analyze interlog-data/my_session
+
+# 5. Generate a heatmap
+interlog heatmap interlog-data/my_session
 ```
 
-You'll see:
-```
-Session:  20240115_143000
-Privacy:  DISABLED
-Output:   /current/directory
+Everything goes into `interlog-data/my_session/` — nothing scattered in your
+working directory.
 
-Recording... Press Ctrl+C to stop.
-```
-
-### Step 2: Interact
-
-Use your computer normally:
-- Move the mouse
-- Click things
-- Type
-- Scroll
-
-### Step 3: Stop Recording
-
-Press `Ctrl+C`
-
-You'll see:
-```
-Session saved!
-Events:   interlog-data/20240115_143000/events.csv
-Metadata: interlog-data/20240115_143000/metadata.json
-
-Total events captured: 2341
-Duration: 45.67 seconds
-
-Run the analyzer to generate statistics:
-  interlog analyze interlog-data/20240115_143000
-```
-
-### Step 4: Analyze
-
-```bash
-interlog analyze interlog-data/20240115_143000
-```
-
-You'll get (written into the same session folder):
-- Console summary of all statistics
-- `summary.csv` - Stats spreadsheet
-- `intensity.csv` - Time-bucketed activity
-
-## All-in-one: screen + interactions + viewer
+## All-in-one: screen + interactions + synced viewer
 
 If you have [ffmpeg](https://ffmpeg.org/download.html) installed:
 
 ```bash
-# Records the primary screen AND interactions together (Ctrl+C to stop)
+# Record screen and interactions together
 interlog record --screen --name p01
 
-# Open the synced viewer, then load the recording it produced
-interlog view interlog-data/p01
+# Open the synced viewer — recording loads automatically, seeking works
+interlog view interlog-data/p01 --serve
 ```
 
-In the viewer, click a "hot spot" (or anywhere on the intensity timeline) to
-jump the video to that moment. If the video and log drift, nudge the sync
-offset field until a known click lines up.
+In the viewer, click a hot spot or anywhere on the intensity timeline to jump
+the video to that moment. Press Ctrl+C in the terminal to stop the server.
 
-## Common Use Cases
+If the video and log are slightly out of sync, nudge the **Sync offset** field
+until a known click lines up.
 
-### HCI Research Session
+## Browse all sessions
 
 ```bash
-# 1. Start screen recording (OBS, QuickTime, etc.)
-
-# 2. Start InterLog with a descriptive name
-interlog record --name participant_01_checkout_flow
-
-# 3. Conduct research session
-
-# 4. Stop InterLog (Ctrl+C)
-
-# 5. Stop screen recording
-
-# 6. Analyze
-interlog analyze interlog-data/participant_01_checkout_flow
+interlog list
 ```
 
-### Privacy Mode (Sensitive Data)
+Shows a table of all sessions: name, date, duration, event count, whether a
+screen recording exists, whether analysis has been run, and privacy status.
+
+## Common Workflows
+
+### HCI research session (bring your own recorder)
 
 ```bash
-# Don't record which keys were pressed
+# 1. Start your screen recorder (OBS, QuickTime, etc.)
+
+# 2. Record interactions
+interlog record --name participant_01_checkout
+
+# 3. Stop InterLog (Ctrl+C), then stop your recorder
+
+# 4. Analyze
+interlog analyze interlog-data/participant_01_checkout
+
+# 5. Generate heatmap
+interlog heatmap interlog-data/participant_01_checkout
+
+# 6. Open viewer and align video with the sync-offset field
+interlog view interlog-data/participant_01_checkout
+```
+
+### Privacy mode
+
+```bash
+# Logs key events without recording which keys were pressed
 interlog record --privacy --name sensitive_session
 ```
 
-### Organize Multiple Sessions
+Typed-text analysis and keyboard identity metrics are automatically suppressed.
+
+### Custom output directory
 
 ```bash
-# Create organized directory structure
-mkdir -p research_study/sessions
-
-# Record session
-interlog record --output research_study/sessions --name p01
-
-# Analyze later
-interlog analyze research_study/sessions/p01
+interlog record --output ./study_2024/sessions --name p01
+interlog analyze ./study_2024/sessions/p01
+interlog heatmap ./study_2024/sessions/p01
 ```
 
 ## What to Look For
 
-### Rage Clicks
-- **3+ rapid clicks in same area**
-- Usually means: broken button, unresponsive UI, or confusion
-- Check the timestamps in your video to see what they were trying to click
+**Rage clicks** — 3+ rapid clicks in the same spot. Usually means a broken
+button, unresponsive UI, or genuine confusion. The heatmap marks them in red.
 
-### High Interaction Density
-- **Lots of actions in short time**
-- Could mean: scanning for something, uncertainty, or error recovery
-- Use `intensity.csv` to find these moments
+**Struggle score** — composite of rage/dead/double clicks and hesitations,
+normalized per minute. Higher = more friction.
 
-### Long Pauses
-- **Gaps between actions**
-- Could mean: reading, thinking, confusion, or distraction
-- Note the `longest_pause_seconds` in the summary
+**High interaction density** — bursts of activity in `intensity.csv` (or the
+terminal sparkline) tell you exactly where to scrub in a long recording.
 
-### Clicks Per Minute
-- **Baseline for comparison**
-- Compare between tasks or participants
-- Sudden changes might indicate difficulty shifts
+**Long pauses** — gaps between actions indicate reading, decisions, or
+confusion. Check `longest_pause_seconds` in the summary.
 
 ## Tips
 
-1. **Always start screen recording first** - Then start InterLog
-2. **Name your sessions** - Use `--name` for easier identification
-3. **Check the summary** - Run `interlog analyze` to spot patterns
-4. **Use intensity data** - Find "hot spots" in long videos quickly
-5. **Combine with notes** - Add timestamps to your observations
+1. **Use `--name`** — descriptive session names make `interlog list` much more useful
+2. **`--serve` for screen recordings** — the file-picker fallback works but `--serve` is smoother
+3. **Heatmap `--sigma`** — increase for sparser sessions, decrease for dense ones
+4. **`--no-text`** — skip transcript reconstruction if you don't need it (faster)
+5. **Privacy mode** — use it for any session where key identities aren't relevant to your research question
 
 ## Troubleshooting
 
-**"ModuleNotFoundError: No module named 'pynput'"**
+**`interlog heatmap` fails with ImportError**
 ```bash
-pip install pynput
+pip install ".[heatmap]"
 ```
 
-**"Permission denied" (macOS)**
-- System Preferences > Security & Privacy > Privacy > Accessibility
-- Add Terminal or your IDE
+**"Permission denied" on macOS**
+- System Settings → Privacy & Security → Accessibility → add your terminal
 
-**No events captured**
-- Check that the script is running (you should see "Recording...")
-- Try moving mouse/clicking - you should see the event count increase
+**No events captured on Linux**
+- Run `interlog doctor --live` to confirm input capture works
+- Wayland: support depends on compositor; X11 works without extra steps
 
-**Want to stop mid-session**
-- Just press `Ctrl+C` - everything is saved automatically
+**Video and log out of sync**
+- Use the **Sync offset** field in `interlog view`
+- Positive offset: video is ahead of the log
+- Negative offset: log is ahead of the video
 
 ## Next Steps
 
-- Read [README.md](README.md) for complete documentation
-- Check [examples/](examples/) for sample output files
-- Experiment with different `--bucket-size` values in analyzer
-
----
-
-Questions? Open an issue on GitHub or check the FAQ in README.md
+- See [README.md](README.md) for full documentation and command reference
+- Browse [examples/](examples/) for sample output files
+- Run `interlog <command> --help` for all options

@@ -1,5 +1,7 @@
 # InterLog
 
+[![CI](https://github.com/blakepiper/interlog/actions/workflows/ci.yml/badge.svg)](https://github.com/blakepiper/interlog/actions/workflows/ci.yml)
+
 ```
      ____      __            __
     /  _/___  / /____  _____/ /___  ____ _
@@ -28,7 +30,9 @@ InterLog tells you *where it matters and by how much*.
   jump straight to the rage-click bursts and high-intensity "hot spots" via a
   synced timeline (`interlog view`).
 - **Quantified behavior.** Clicks/min, action rate, pauses, scroll distance,
-  and rage-click detection out of the box (`interlog analyze`).
+  rage-click detection, and a composite struggle score (`interlog analyze`).
+- **Instant visual summary.** Generate a mouse-density heatmap overlaid on a
+  captured screen frame — one PNG that tells the whole story (`interlog heatmap`).
 - **Works anywhere on the desktop.** Native apps, prototypes, games, kiosks —
   not just websites (where Hotjar/Clarity stop).
 - **Private by design.** Everything stays local. Optional privacy mode logs
@@ -39,191 +43,197 @@ evidence and triage, not a one-off clip you'd just watch.
 
 ## What You Get
 
-- **Comprehensive interaction capture**: Mouse (moves, clicks, scrolls, drags) and keyboard events
-- **Privacy-first**: Optional privacy mode that logs key events without recording which keys
-- **Cross-platform**: Works on Windows, macOS, and Linux
-- **Structured output**: CSV files ready for analysis in Excel, R, Python, or your tool of choice
-- **Rich analytics**: Automatic statistics including rage clicks, pause detection, interaction intensity
-- **Video sync**: Built-in screen recording (`--screen`), or align timestamps with your own OBS/QuickTime/etc. recordings
+- **Comprehensive interaction capture** — Mouse (moves, clicks, scrolls, drags) and keyboard events
+- **Rich terminal analytics** — Statistics, behavioral scores, and a Unicode activity sparkline
+- **Mouse heatmap** — Density PNG with rage-click markers, overlaid on a screen grab
+- **Synced viewer** — Local HTML timeline with intensity bars and hot spots; click to seek
+- **Session browser** — `interlog list` shows all sessions with duration, event counts, and status
+- **Privacy-first** — Optional privacy mode that logs key events without recording which keys
+- **Cross-platform** — Works on Windows, macOS, and Linux
 
 ## Quick Start
 
 ### Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/blakepiper/interlog.git
 cd interlog
-
-# Install the package (provides the `interlog` command)
 pip install .
 ```
 
-This installs a single `interlog` command on your PATH. **That's it!** No
-configuration files, no accounts.
+This installs a single `interlog` command on your PATH. No configuration files,
+no accounts.
 
-> Developing on InterLog? Use an editable install: `pip install -e .`
-
-Verify your environment any time with:
+Add heatmap support (matplotlib, numpy, Pillow):
 
 ```bash
-interlog doctor          # check Python + pynput (+ ffmpeg, for --screen)
+pip install ".[heatmap]"
+```
+
+Verify your environment any time:
+
+```bash
+interlog doctor          # checks Python, pynput, ffmpeg, and heatmap deps
 interlog doctor --live   # confirm input capture works (press ESC to stop)
 ```
 
-### Basic Usage
+### Record a session
 
 ```bash
-# Start recording interactions
-interlog record
-
+interlog record --name p01
 # Press Ctrl+C when done
 ```
 
-### Record the screen too (all in one)
-
-If you have [ffmpeg](https://ffmpeg.org/download.html) installed, InterLog can
-start a screen recording and the interaction log together, already aligned in
-time:
-
-```bash
-interlog record --screen --name user_study_p1
-# Press Ctrl+C when done -> writes the .mp4, the events CSV, and metadata
-```
-
-Then open the **synced viewer** to scrub straight to the interesting moments:
-
-```bash
-interlog view interlog-data/user_study_p1
-```
-
-This opens a local HTML page with an interaction-intensity timeline and
-rage-click markers. Load your recording (it stays on your machine — nothing is
-uploaded), and clicking a "hot spot" jumps the video to that moment. A sync
-offset nudge is provided in case the video and log need fine alignment.
-
-Each session is saved in its own subfolder under `interlog-data/`:
+Each session is saved in its own subfolder:
 
 ```
 interlog-data/
-└── 20240115_143000/          # session folder (timestamp, or your --name)
-    ├── events.csv            # all interaction events with timestamps
-    └── metadata.json         # session metadata
+└── p01/
+    ├── events.csv      # every interaction with timestamps
+    └── metadata.json   # session info
 ```
 
-So nothing is dumped loose in your working directory — everything is contained
-and self-describing. Use `-o DIR` to put the `interlog-data` root somewhere else.
-
-### Generate Statistics
+Add `--screen` to also capture the primary display (requires
+[ffmpeg](https://ffmpeg.org/download.html)):
 
 ```bash
-# Point at the session folder (or its events.csv)
-interlog analyze interlog-data/20240115_143000
+interlog record --screen --name p01
 ```
 
-This adds to the same session folder:
-- `summary.csv` - Session statistics (clicks/min, rage clicks, etc.)
-- `intensity.csv` - Time-bucketed activity data
+### Analyze
 
-`interlog view interlog-data/20240115_143000` likewise writes `viewer.html` there.
+```bash
+interlog analyze interlog-data/p01
+```
 
-#### Typed-text analysis
+Prints a Rich statistics panel to the terminal and writes to the session folder:
 
-`interlog analyze` reconstructs the typed text from the keystroke log and runs
-local, dependency-free lexical analysis (word/char counts, top keywords),
-writing `transcript.txt` and `text.json`. It runs **by default**, entirely on
-your machine (no cloud). Pass `--no-text` to skip it, and it's automatically
-skipped for privacy-mode sessions (where key identities weren't recorded).
+- `summary.csv` — all metrics (clicks/min, rage clicks, struggle score, …)
+- `intensity.csv` — time-bucketed interaction counts
+- `transcript.txt` + `text.json` — typed-text reconstruction and lexical stats
+  (skipped automatically in privacy mode; pass `--no-text` to disable)
 
-Note: keystrokes are captured globally across apps and caret moves aren't
-tracked, so the transcript is approximate — treat it as a reviewable artifact.
+### Generate a heatmap
+
+```bash
+interlog heatmap interlog-data/p01
+```
+
+Writes `interlog-data/p01/heatmap.png` — a mouse-density overlay on a captured
+screen frame, with rage clicks marked in red. Opens automatically; pass
+`--no-open` to skip.
+
+### View the synced timeline
+
+```bash
+# With a screen recording — auto-loads the video, seeking works immediately
+interlog view interlog-data/p01 --serve
+
+# Without a recording — open the HTML and load the video manually
+interlog view interlog-data/p01
+```
+
+`--serve` starts a local HTTP server with Range-request support so the browser
+can seek without downloading the whole file. Press Ctrl+C to stop the server.
+
+### Browse all sessions
+
+```bash
+interlog list
+```
+
+Prints a table of all sessions: name, date, duration, event count, whether a
+screen recording and analysis are present, and privacy status.
 
 ## Example Workflow
 
-Simplest path — let InterLog record the screen for you:
-
-1. **Start InterLog with screen capture**: `interlog record --screen --name user_study_p1`
-2. **Conduct your user research session**
-3. **Stop InterLog** (Ctrl+C) — writes the MP4, events CSV, and metadata
-4. **Open the synced viewer**: `interlog view interlog-data/user_study_p1`
-
-Or bring your own screen recorder:
-
-1. **Start your screen recording** (OBS, QuickTime, etc.)
-2. **Start InterLog**: `interlog record --name user_study_p1`
-3. **Conduct your user research session**
-4. **Stop InterLog** (Ctrl+C)
-5. **Stop your screen recording**
-6. **Analyze the data**: `interlog analyze interlog-data/user_study_p1`
-7. **Review the video** with timestamps from the CSV to find interesting moments
-
-## Advanced Options
-
-### Privacy Mode
-
-For sensitive research where you don't need to know which keys were pressed:
-
 ```bash
-interlog record --privacy
+# 1. Record screen + interactions together
+interlog record --screen --name p01
+
+# 2. Analyze — statistics panel + output files
+interlog analyze interlog-data/p01
+
+# 3. Generate a heatmap PNG
+interlog heatmap interlog-data/p01
+
+# 4. Review with the synced viewer (video auto-loads, seeking works)
+interlog view interlog-data/p01 --serve
 ```
 
-This logs keyboard activity without recording the actual keys pressed.
-
-### Custom Session Names
+Or bring your own screen recorder (OBS, QuickTime, etc.):
 
 ```bash
-interlog record --name participant_05_task_checkout
+# Start your recorder, then:
+interlog record --name p01
+# Stop InterLog (Ctrl+C), then stop your recorder.
+# Align the timestamps in the viewer's sync-offset field.
+interlog view interlog-data/p01
 ```
 
-### Custom Output Directory
+## Commands
 
-```bash
-interlog record --output ./sessions/study_2024/
+### `record` — Capture interactions
+
 ```
-
-### Full Command Options
-
-InterLog is a single command with subcommands: `record`, `analyze`, `view`, and
-`doctor`. Run `interlog <command> --help` for details.
-
-**Recording:**
-```bash
 interlog record [OPTIONS]
 
-Options:
-  -o, --output DIR     Output directory (default: current directory)
-  -n, --name NAME      Session name (default: timestamp)
-  -p, --privacy        Enable privacy mode
-  --screen             Also record the primary screen (requires ffmpeg)
-  --fps N              Screen capture frame rate with --screen (default: 15)
-  -h, --help           Show help message
+  -n, --name NAME       Session name (default: timestamp)
+  -o, --output DIR      Data directory root (default: ./interlog-data)
+  -p, --privacy         Log key events without recording which keys
+      --screen          Also record the primary screen via ffmpeg
+      --fps N           Screen capture frame rate (default: 15)
+      --monitor {primary,all}   Which display to capture (default: primary)
 ```
 
-**Viewing (sync log with recording):**
-```bash
-interlog view EVENTS_FILE [OPTIONS]
+### `list` — Browse sessions
 
-Options:
-  -o, --output PATH        Output .html file or directory
-  -b, --bucket-size SECS   Timeline bucket size (default: 2.0)
-  --no-open                Generate the HTML without opening a browser
-  -h, --help               Show help message
+```
+interlog list [OPTIONS]
+
+  -o, --output DIR      Directory to list (default: ./interlog-data)
 ```
 
-**Analyzing:**
-```bash
-interlog analyze EVENTS_FILE [OPTIONS]
+### `analyze` — Compute statistics
 
-Options:
-  -o, --output DIR         Output directory for analysis files
-  -b, --bucket-size SECS   Time bucket size for intensity (default: 5.0)
-  --json                   Also output summary as JSON
-  --no-text                Skip typed-text reconstruction (on by default)
-  -h, --help               Show help message
+```
+interlog analyze SESSION [OPTIONS]
+
+  SESSION               Session folder or path to events.csv
+  -o, --output DIR      Output directory (default: session folder)
+  -b, --bucket-size S   Time bucket size for intensity (default: 5.0)
+      --json            Also emit summary as JSON
+      --no-text         Skip typed-text reconstruction
 ```
 
-**Diagnostics:**
-```bash
+### `heatmap` — Generate a density PNG
+
+```
+interlog heatmap SESSION [OPTIONS]
+
+  SESSION               Session folder or path to events.csv
+  -o, --output FILE     Output PNG path (default: <session>/heatmap.png)
+      --sigma N         Gaussian blur radius in pixels (default: 25)
+      --no-open         Save without opening
+```
+
+Requires the `[heatmap]` optional dependencies (`pip install ".[heatmap]"`).
+
+### `view` — Open the synced timeline viewer
+
+```
+interlog view SESSION [OPTIONS]
+
+  SESSION               Session folder or path to events.csv
+  -o, --output PATH     Output HTML file or directory
+  -b, --bucket-size S   Timeline bucket size in seconds (default: 2.0)
+      --serve           Serve over HTTP so the recording loads automatically
+      --no-open         Generate HTML without opening a browser
+```
+
+### `doctor` — Check your environment
+
+```
 interlog doctor [--live]
 
   --live   Run a live input-capture test (press ESC to finish)
@@ -231,9 +241,9 @@ interlog doctor [--live]
 
 ## Output Files
 
-### Events CSV (`events.csv`)
+### `events.csv`
 
-Contains every interaction event:
+Every interaction event, one row per event:
 
 | timestamp | event_type | x | y | button | key | dx | dy |
 |-----------|------------|---|---|--------|-----|----|----|
@@ -243,7 +253,7 @@ Contains every interaction event:
 | 1.445 | key_press | | | | a | | |
 | 2.108 | scroll | 500 | 400 | | | 0 | -3 |
 
-### Summary CSV (`summary.csv`)
+### `summary.csv`
 
 Key statistics about the session:
 
@@ -262,31 +272,35 @@ Key statistics about the session:
 | typing_chars_per_minute | 142 |
 | correction_rate | 0.08 |
 | struggle_score | 6.4 |
-| ... | ... |
+| … | … |
 
-The summary spans several families: **event counts & rates**, **pointer**
-(distance, speed, idle/active, time-to-first-action), **timing** (longest/median
-pause, hesitations), **click quality** (rage/dead/double clicks), **keyboard
-dynamics** (typing speed, inter-key interval, correction rate — omitted under
-privacy mode), and a composite **struggle score** for quick triage.
+Covers: **event counts & rates**, **pointer** (distance, speed, idle/active,
+time-to-first), **timing** (longest/median pause, hesitations), **click
+quality** (rage/dead/double), **keyboard dynamics** (typing speed, inter-key
+interval, correction rate — omitted in privacy mode), and a composite
+**struggle score** for quick triage.
 
-### Intensity CSV (`intensity.csv`)
+### `intensity.csv`
 
-Time-bucketed interaction counts (great for finding "hot spots" in videos):
+Time-bucketed interaction counts — great for finding "hot spots" in long videos:
 
 | time_start | time_end | total_interactions | clicks | scrolls | keypresses |
-|------------|----------|-------------------|--------|---------|------------|
+|------------|----------|--------------------|--------|---------|------------|
 | 0.0 | 5.0 | 12 | 3 | 2 | 7 |
 | 5.0 | 10.0 | 8 | 1 | 4 | 3 |
 | 10.0 | 15.0 | 23 | 8 | 5 | 10 |
 
-### Metadata JSON (`metadata.json`)
+### `heatmap.png`
 
-Session information:
+A mouse-movement density map overlaid on a screen grab from the recording,
+with normal clicks marked in white and rage clicks in red.
+Generated by `interlog heatmap`; requires the `[heatmap]` optional extras.
+
+### `metadata.json`
 
 ```json
 {
-  "session_name": "user_study_p1",
+  "session_name": "p01",
   "start_time": "2024-01-15T14:30:00",
   "end_time": "2024-01-15T14:32:07",
   "privacy_mode": false,
@@ -297,106 +311,97 @@ Session information:
 
 ## What the Statistics Tell You
 
-### Rage Clicks
-3+ rapid clicks in the same area—often indicates confusion, broken UI elements, or unresponsive feedback.
+**Rage clicks** — 3+ rapid clicks in the same area. Usually indicates a broken
+or unresponsive UI element, or genuine user confusion.
 
-### Clicks Per Minute
-Higher rates might indicate scanning behavior or uncertainty. Lower rates might mean focused reading or decision-making.
+**Struggle score** — composite of rage clicks, dead clicks, double clicks, and
+hesitations, normalized per minute. Higher means more friction.
 
-### Longest Pause
-Long pauses can indicate moments of confusion, complex decisions, or simply reading dense content.
+**Clicks per minute** — baseline for comparison across tasks and participants.
+Sudden drops often accompany dense reading or decision-making.
 
-### Interaction Intensity
-Time-bucketed data helps you quickly scrub to the most active moments in your video recording.
+**Longest pause** — gaps between actions reveal moments of confusion, complex
+decisions, or waiting for a slow response.
+
+**Interaction intensity** — the time-bucketed sparkline (in the terminal and in
+`intensity.csv`) tells you where to look first in a long recording.
 
 ## Technical Details
 
 ### Requirements
+
 - Python 3.7+
-- `pynput` library (installed automatically with the package)
-- `ffmpeg` (optional) — only needed for `interlog record --screen`
+- [`pynput`](https://github.com/moses-palmer/pynput) — installed automatically
+- [`rich`](https://github.com/Textualize/rich) — installed automatically
+- `ffmpeg` — optional, needed only for `interlog record --screen`
+- `matplotlib`, `numpy`, `Pillow` — optional, needed only for `interlog heatmap`
+  (`pip install ".[heatmap]"`)
 
 ### Platform Notes
 
-**macOS**: You may need to grant accessibility permissions:
-- System Preferences → Security & Privacy → Privacy → Accessibility
-- Add Terminal (or your Python IDE)
+**macOS** — Accessibility permission required:
+System Settings → Privacy & Security → Accessibility → add your terminal.
 
-**Linux**: Some distributions may require additional packages for `pynput`:
-```bash
-sudo apt-get install python3-xlib  # Debian/Ubuntu
-```
+**Linux** — On X11 no extra steps are needed. Wayland support depends on
+your compositor; run `interlog doctor --live` to confirm.
 
-**Windows**: Should work out of the box on Windows 7+
+**Windows** — Works out of the box on Windows 10+.
 
 ## Contributing
 
-This is a free tool for researchers—contributions welcome!
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup
+and guidelines.
 
-- Found a bug? [Open an issue](https://github.com/blakepiper/interlog/issues)
-- Have a feature idea? [Start a discussion](https://github.com/blakepiper/interlog/discussions)
-- Want to contribute code? Fork and submit a PR!
+- Bug? [Open an issue](https://github.com/blakepiper/interlog/issues)
+- Feature idea? [Open an issue](https://github.com/blakepiper/interlog/issues)
+- Code? Fork and submit a PR.
 
 ## License & Citation
 
-InterLog is free and open-source under the [MIT License](LICENSE) — use, modify,
-distribute, and sell it as you see fit.
+InterLog is free and open-source under the [MIT License](LICENSE) — use,
+modify, distribute, and sell it as you see fit.
 
-The one ask: if you use InterLog in published research, **please cite it** — see
-[CITATION.cff](CITATION.cff).
+The one ask: if you use InterLog in published research, **please cite it** —
+see [CITATION.cff](CITATION.cff).
 
 ## Use Cases
 
-- **Usability testing**: Identify pain points and confusion
-- **A/B testing**: Compare interaction patterns between designs
-- **User research**: Quantify behavior alongside qualitative observations
-- **Academic research**: Publish reproducible interaction metrics
-- **Design portfolios**: Back up design decisions with real data
-
-## Roadmap
-
-Current version is MVP. Future enhancements could include:
-
-- [x] HTML/JS viewer for syncing logs with video playback (`interlog view`)
-- [x] Built-in screen recording via ffmpeg (`interlog record --screen`)
-- [ ] Frame-perfect auto-sync (current auto-offset is best-effort + manual nudge)
-- [ ] Executable binaries (no Python installation needed)
-- [ ] PyPI package for easy installation
-- [ ] Heatmap generation from mouse movements
-- [ ] Support for multi-monitor setups
-- [ ] Export to more formats (JSON, Parquet, SQLite)
-- [ ] Real-time dashboard during recording
+- **Usability testing** — Identify pain points and confusion with quantified evidence
+- **A/B testing** — Compare interaction patterns between design conditions
+- **User research** — Supplement qualitative observations with behavioral metrics
+- **Academic HCI** — Publish reproducible interaction data alongside your findings
+- **Design portfolios** — Back up design decisions with real interaction data
 
 ## FAQ
 
 **Q: Does this record my screen?**
-A: Optionally, yes. By default InterLog only captures mouse/keyboard events, but
-`interlog record --screen` will also capture the primary screen to an MP4 (via
-[ffmpeg](https://ffmpeg.org/download.html)), already time-aligned with the
-interaction log so you can scrub it in `interlog view`. You can still use your
-own screen recorder (OBS, QuickTime, etc.) instead and sync against the
-timestamps — `--screen` is just the all-in-one option.
+A: Optionally. By default InterLog only captures mouse/keyboard events. Add
+`--screen` to also record the display via ffmpeg, already time-aligned with the
+interaction log. Then use `interlog view --serve` to open the synced viewer with
+the recording loaded automatically. You can also use your own recorder (OBS,
+QuickTime, etc.) and align timestamps using the viewer's sync-offset field.
 
 **Q: Is my data sent anywhere?**
 A: No. Everything stays on your local machine. No network access, no cloud, no telemetry.
 
 **Q: Can I use this for remote research?**
-A: Yes! Just send participants the script and have them screen-share while running it, or have them run it locally and send you the CSV files afterward.
+A: Yes. Send participants the package and have them run `interlog record`
+locally, then share the session folder with you afterward.
 
 **Q: What about mobile/touch interactions?**
-A: Not yet supported. This version focuses on desktop interactions only.
+A: Not currently supported. InterLog focuses on desktop (mouse + keyboard).
 
 **Q: How accurate are the timestamps?**
-A: Very accurate—typically within milliseconds. Perfect for syncing with 30fps or 60fps video.
+A: Sub-millisecond resolution from a monotonic clock. Accurate enough to sync
+with 60fps video.
 
 ## Acknowledgments
 
-Built with:
-- [pynput](https://github.com/moses-palmer/pynput) - Cross-platform input monitoring
-- Love for the HCI research community
+Built with [pynput](https://github.com/moses-palmer/pynput) for cross-platform
+input monitoring and [Rich](https://github.com/Textualize/rich) for terminal output.
 
 ---
 
-**Made for HCI researchers who care about users**
+**Made for HCI researchers who care about users.**
 
-*InterLog is free and open-source (MIT). If it helps your research, please cite it and consider starring it on GitHub!*
+*MIT licensed — if it helps your research, please cite it and consider starring the repo.*
