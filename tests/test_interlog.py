@@ -11,7 +11,7 @@ import time
 
 import pytest
 
-from interlog.analyzer import InteractionAnalyzer, base_prefix
+from interlog.analyzer import InteractionAnalyzer, base_prefix, batch_analyze
 from interlog.cli import _resolve_events_path
 from interlog.heatmap import _infer_bounds, _rage_timestamps
 from interlog.recorder import EVENT_FIELDS, InteractionLogger
@@ -336,3 +336,33 @@ def test_sparkline_non_empty(tmp_path):
     spark = a._sparkline()
     assert len(spark) > 0
     assert all(c in " ▁▂▃▄▅▆▇█" for c in spark)
+
+
+# --- batch_analyze ---------------------------------------------------------
+
+def test_batch_analyze_returns_one_row_per_session(tmp_path):
+    for name in ("p01", "p02"):
+        events = tmp_path / name / "events.csv"
+        _write_events(events, [
+            {"timestamp": float(i), "event_type": "mouse_down", "x": 1, "y": 1}
+            for i in range(10)
+        ])
+    rows = batch_analyze(tmp_path)
+    assert len(rows) == 2
+    sessions = {r["session"] for r in rows}
+    assert sessions == {"p01", "p02"}
+    for r in rows:
+        assert "clicks_per_minute" in r
+        assert "struggle_score" in r
+
+
+def test_batch_analyze_skips_missing_events(tmp_path):
+    (tmp_path / "empty_session").mkdir()
+    events = tmp_path / "good" / "events.csv"
+    _write_events(events, [
+        {"timestamp": float(i), "event_type": "mouse_down", "x": 1, "y": 1}
+        for i in range(5)
+    ])
+    rows = batch_analyze(tmp_path)
+    assert len(rows) == 1
+    assert rows[0]["session"] == "good"

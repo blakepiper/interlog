@@ -543,3 +543,43 @@ class InteractionAnalyzer:
             console.print(f"  [cyan]{spark}[/cyan]")
             console.print(f"  [dim]0:00 {'─' * dashes} {dur}[/dim]")
             console.print()
+
+
+def batch_analyze(data_dir):
+    """Walk all sessions in data_dir and return a list of stats dicts.
+
+    Each dict has the session name and a flat set of key metrics drawn from
+    InteractionAnalyzer.calculate_statistics(). Sessions that cannot be read
+    are silently skipped.
+    """
+    data_dir = Path(data_dir)
+    rows = []
+    for session_dir in sorted(data_dir.iterdir()):
+        if not session_dir.is_dir():
+            continue
+        events_path = session_dir / "events.csv"
+        if not events_path.exists():
+            continue
+        try:
+            analyzer = InteractionAnalyzer(events_path)
+            analyzer.load_events()
+            if not analyzer.events:
+                continue
+            analyzer.calculate_statistics()
+            s = analyzer.stats
+            rows.append({
+                "session": session_dir.name,
+                "duration_seconds": s["session_duration_seconds"],
+                "duration_formatted": s["session_duration_formatted"],
+                "total_events": s["total_events"],
+                "total_clicks": s["total_clicks"],
+                "clicks_per_minute": s["clicks_per_minute"],
+                "actions_per_minute": s["actions_per_minute"],
+                "rage_clicks": s["rage_clicks_detected"],
+                "dead_clicks": s["dead_clicks"],
+                "hesitations": s["hesitations"],
+                "struggle_score": s["struggle_score"],
+            })
+        except Exception:
+            continue
+    return rows

@@ -31,6 +31,8 @@ Examples:
   interlog list -d ./sessions                  List sessions from a custom directory
   interlog analyze p01                         Generate statistics for a session
   interlog analyze p01 -b 10 --json            Custom bucket size, also emit JSON
+  interlog analyze --batch                     Aggregate all sessions in ./interlog-data/
+  interlog analyze --batch ./sessions          Aggregate sessions from a custom directory
   interlog view p01                            Open the timeline viewer for a session
   interlog doctor --live                       Verify input capture works
 """,
@@ -111,7 +113,15 @@ Examples:
     p_analyze = sub.add_parser(
         "analyze", help="Generate statistics from a recorded session."
     )
-    p_analyze.add_argument("events_file", help="Path to an events CSV, or a session folder containing events.csv.")
+    p_analyze.add_argument(
+        "events_file", nargs="?", default=None,
+        help="Path to an events CSV, or a session folder containing events.csv.",
+    )
+    p_analyze.add_argument(
+        "--batch", nargs="?", const="interlog-data", metavar="DIR",
+        help="Aggregate all sessions in DIR (default: ./interlog-data). "
+             "Prints a cross-session table and writes aggregate.csv.",
+    )
     p_analyze.add_argument(
         "-o", "--output", default=None,
         help="Output directory for analysis files (default: alongside the events file).",
@@ -351,10 +361,17 @@ def _cmd_list(args):
 
 
 def _cmd_analyze(args):
+    if args.batch is not None:
+        return _cmd_analyze_batch(args)
+
     from rich.console import Console
     from interlog.analyzer import InteractionAnalyzer, base_prefix
 
     console = Console(highlight=False)
+
+    if args.events_file is None:
+        console.print("[red]Error:[/red] provide a session path or use --batch to aggregate a directory.")
+        return 1
 
     if args.bucket_size <= 0:
         console.print("[red]Error:[/red] --bucket-size must be greater than 0.")
@@ -415,6 +432,118 @@ def _cmd_analyze(args):
     console.print(f"  [bold cyan]interlog view[/bold cyan] [white]{session_dir}[/white]{serve}")
     console.print()
 
+    return 0
+
+
+def _cmd_analyze_batch(args):
+    import csv as _csv
+    import statistics as _stats
+    from rich.console import Console
+    from rich.table import Table
+    from rich import box
+    from interlog.analyzer import batch_analyze
+
+    console = Console(highlight=False)
+    data_dir = Path(args.batch)
+
+    if not data_dir.exists():
+        console.print(f"[red]Error:[/red] directory not found: {data_dir}")
+        return 1
+
+    with console.status("[cyan]Analyzing sessions…[/cyan]", spinner="dots"):
+        rows = batch_analyze(data_dir)
+
+    if not rows:
+        console.print(f"[yellow]No analyzed sessions found in[/yellow] {data_dir}")
+        console.print("  [dim]Run 'interlog analyze <session>' on each session first, or make sure "
+                      "events.csv files exist.[/dim]")
+        return 1
+
+    console.print()
+    console.rule(
+        f"[bold]Batch Analysis[/bold]  [dim]{data_dir}/[/dim]  "
+        f"[dim]({len(rows)} session{'s' if len(rows) != 1 else ''})[/dim]",
+        style="cyan dim",
+    )
+    console.print()
+
+    table = Table(
+        box=box.SIMPLE_HEAD,
+        show_header=True,
+        header_style="bold cyan",
+        pad_edge=True,
+        show_edge=False,
+    )
+    table.add_column("Session", style="white", min_width=20)
+    table.add_column("Duration", justify="right", min_width=8)
+    table.add_column("Clicks/min", justify="right", min_width=10, style="cyan")
+    table.add_column("Act/min", justify="right", min_width=7, style="cyan")
+    table.add_column("Rage", justify="right", min_width=5)
+    table.add_column("Dead", justify="right", min_width=5)
+    table.add_column("Pause", justify="right", min_width=5)
+    table.add_column("Struggle", justify="right", min_width=8)
+
+    def _struggle_fmt(v):
+        if v < 2:
+            return f"[green]{v:.2f}[/green]"
+        if v < 5:
+            return f"[yellow]{v:.2f}[/yellow]"
+        return f"[red]{v:.2f}[/red]"
+
+    for r in rows:
+        table.add_row(
+            r["session"],
+            r["duration_formatted"],
+            f"{r['clicks_per_minute']:.1f}",
+            f"{r['actions_per_minute']:.1f}",
+            str(r["rage_clicks"]),
+            str(r["dead_clicks"]),
+            str(r["hesitations"]),
+            _struggle_fmt(r["struggle_score"]),
+        )
+
+    # Mean ± SD footer row
+    def _ms(key):
+        vals = [r[key] for r in rows]
+        mean = sum(vals) / len(vals)
+        sd = _stats.stdev(vals) if len(vals) > 1 else 0.0
+        return mean, sd
+
+    m_cpm, s_cpm = _ms("clicks_per_minute")
+    m_apm, s_apm = _ms("actions_per_minute")
+    m_rage, s_rage = _ms("rage_clicks")
+    m_dead, s_dead = _ms("dead_clicks")
+    m_hes, s_hes = _ms("hesitations")
+    m_str, s_str = _ms("struggle_score")
+
+    table.add_section()
+    table.add_row(
+        "[dim]mean ± SD[/dim]",
+        "[dim]—[/dim]",
+        f"[dim]{m_cpm:.1f} ±{s_cpm:.1f}[/dim]",
+        f"[dim]{m_apm:.1f} ±{s_apm:.1f}[/dim]",
+        f"[dim]{m_rage:.1f} ±{s_rage:.1f}[/dim]",
+        f"[dim]{m_dead:.1f} ±{s_dead:.1f}[/dim]",
+        f"[dim]{m_hes:.1f} ±{s_hes:.1f}[/dim]",
+        f"[dim]{m_str:.2f} ±{s_str:.2f}[/dim]",
+    )
+
+    console.print(table)
+
+    # Write aggregate.csv
+    agg_path = data_dir / "aggregate.csv"
+    fieldnames = [
+        "session", "duration_seconds", "duration_formatted",
+        "total_events", "total_clicks", "clicks_per_minute", "actions_per_minute",
+        "rage_clicks", "dead_clicks", "hesitations", "struggle_score",
+    ]
+    with open(agg_path, "w", newline="", encoding="utf-8") as f:
+        writer = _csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    console.print(f"  [dim]Aggregate  [/dim]{agg_path}")
+    console.print()
     return 0
 
 
@@ -572,7 +701,7 @@ def main(argv=None):
         table.add_column("", style="white")
         table.add_row("record", "Capture mouse + keyboard  [dim](add --screen for video)[/dim]")
         table.add_row("list", "List all recorded sessions")
-        table.add_row("analyze", "Compute session statistics + activity sparkline")
+        table.add_row("analyze", "Compute session statistics  [dim](add --batch to aggregate a directory)[/dim]")
         table.add_row("heatmap", "Generate a mouse movement and click heatmap PNG")
         table.add_row("view", "Open the synced timeline viewer  [dim](add --serve for auto video loading)[/dim]")
         table.add_row("doctor", "Check your environment")
