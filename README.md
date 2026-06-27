@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/img/banner.svg" alt="InterLog" width="560">
+<img src="docs/img/banner.svg" alt="InterLog" width="620">
 
 **Local interaction logging and analysis for HCI research.**
 

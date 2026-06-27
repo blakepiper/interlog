@@ -43,7 +43,7 @@ def main():
 
     # Banner: the exact colored logo the CLI prints, exported as an SVG so the
     # README header and the terminal art can never drift apart.
-    con = Console(record=True, width=52, highlight=False)
+    con = Console(record=True, width=66, highlight=False)
     con.print(Text.from_ansi(banner(color=True)))
     (IMG_DIR / "banner.svg").write_text(
         con.export_svg(title="interlog"), encoding="utf-8")

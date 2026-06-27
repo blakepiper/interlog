@@ -1,19 +1,20 @@
-"""Shared ASCII branding for the CLI.
+"""Shared branding for the CLI.
 
-Renders the InterLog banner, with ANSI color when the terminal supports it and
-plain ASCII otherwise (so it never garbles a pipe, a file, or a legacy console).
+Renders the InterLog logo, with a cyan→blue ANSI gradient when the terminal
+supports it and plain text otherwise (so it never garbles a pipe, file, or
+legacy console).
 """
 
 import os
 import sys
 
-_ART = r"""
-     ____      __            __
-    /  _/___  / /____  _____/ /___  ____ _
-    / // __ \/ __/ _ \/ ___/ / __ \/ __ `/
-  _/ // / / / /_/  __/ /  / / /_/ / /_/ /
- /___/_/ /_/\__/\___/_/  /_/\____/\__, /
-                                 /____/"""
+_ART = """
+██╗███╗   ██╗████████╗███████╗██████╗ ██╗      ██████╗  ██████╗ 
+██║████╗  ██║╚══██╔══╝██╔════╝██╔══██╗██║     ██╔═══██╗██╔════╝ 
+██║██╔██╗ ██║   ██║   █████╗  ██████╔╝██║     ██║   ██║██║  ███╗
+██║██║╚██╗██║   ██║   ██╔══╝  ██╔══██╗██║     ██║   ██║██║   ██║
+██║██║ ╚████║   ██║   ███████╗██║  ██║███████╗╚██████╔╝╚██████╔╝
+╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚═╝  ╚═╝╚══════╝ ╚═════╝  ╚═════╝ """
 
 _TAGLINE = "capture . measure . replay"
 _SUBTITLE = "interaction logging for HCI research"
@@ -27,15 +28,12 @@ _BOLD = "\033[1m"
 _DIM = "\033[2m"
 _RESET = "\033[0m"
 
+_ART_WIDTH = 64
 
-def _gradient_art():
-    """The logo with a cyan→blue vertical gradient, one color per line."""
-    lines = _ART.split("\n")[1:]  # drop the leading blank line
-    out = []
-    for i, line in enumerate(lines):
-        color = _GRADIENT[min(i, len(_GRADIENT) - 1)]
-        out.append(f"{_BOLD}\033[38;5;{color}m{line}{_RESET}")
-    return "\n" + "\n".join(out)
+
+def _center(text):
+    """Left padding to center ``text`` under the logo."""
+    return " " * max(0, (_ART_WIDTH - len(text)) // 2)
 
 
 def _enable_windows_vt():
@@ -65,18 +63,33 @@ def _supports_color():
     return True
 
 
+def _gradient_art():
+    """The logo with a cyan→blue vertical gradient, one color per line."""
+    lines = _ART.split("\n")[1:]  # drop the leading blank line
+    out = []
+    for i, line in enumerate(lines):
+        color = _GRADIENT[min(i, len(_GRADIENT) - 1)]
+        out.append(f"{_BOLD}\033[38;5;{color}m{line}{_RESET}")
+    return "\n" + "\n".join(out)
+
+
 def banner(color=None):
     """Return the banner as a string."""
     if color is None:
         color = _supports_color()
 
-    if not color:
-        chevrons = f"   >>>>  {_TAGLINE}  <<<<"
-        subtitle = f"        {_SUBTITLE}"
-        return f"{_ART}\n{chevrons}\n{subtitle}"
+    chev_text = f">>>>  {_TAGLINE}  <<<<"
+    chev_pad = _center(chev_text)
+    sub_pad = _center(_SUBTITLE)
 
-    chevrons = f"{_BOLD}{_YELLOW}   >>>>  {_RESET}{_BLUE}{_TAGLINE}{_RESET}{_BOLD}{_YELLOW}  <<<<{_RESET}"
-    subtitle = f"{_DIM}        {_SUBTITLE}{_RESET}"
+    if not color:
+        return f"{_ART}\n{chev_pad}{chev_text}\n{sub_pad}{_SUBTITLE}"
+
+    chevrons = (
+        f"{chev_pad}{_BOLD}{_YELLOW}>>>>  {_RESET}"
+        f"{_BLUE}{_TAGLINE}{_RESET}{_BOLD}{_YELLOW}  <<<<{_RESET}"
+    )
+    subtitle = f"{sub_pad}{_DIM}{_SUBTITLE}{_RESET}"
     return f"{_gradient_art()}\n{chevrons}\n{subtitle}"
 
 
