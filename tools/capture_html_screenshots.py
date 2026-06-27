@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tools"))
 
-from capture_screenshots import write_hero_session  # noqa: E402
+from capture_screenshots import _add_screen_recording, write_hero_session  # noqa: E402
 from interlog.heatmap import build_heatmap  # noqa: E402
 from interlog.report import build_report  # noqa: E402
 
@@ -53,6 +53,7 @@ def main():
     IMG_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         session = write_hero_session(Path(tmp) / "checkout-flow")
+        _add_screen_recording(session)       # heatmap overlays the UI
         build_heatmap(session)               # so the report embeds it (no placeholder)
         report = build_report(session)
 

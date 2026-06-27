@@ -67,6 +67,7 @@ src/interlog/
 pyproject.toml         # Packaging + the `interlog` console script
 docs/METRICS.md        # Definitions, formulas, and limitations of every metric
 tools/
+  mock_screen.py               # Shared synthetic checkout UI (heatmap background + GIF video)
   capture_screenshots.py       # Regenerates the README terminal SVGs + heatmap/compare PNGs
   capture_html_screenshots.py  # Optional: report.html screenshot (needs a browser)
   capture_viewer_gif.py        # Optional: the synced-viewer demo GIF (needs a browser + ffmpeg)
