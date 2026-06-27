@@ -60,9 +60,8 @@ def reconstruct_text(events):
             out.append(key)
         elif key in _SPECIAL:
             out.append(_SPECIAL[key])
-        elif key == "Key.backspace":
-            if out:
-                out.pop()
+        elif key == "Key.backspace" and out:
+            out.pop()
     return "".join(out)
 
 

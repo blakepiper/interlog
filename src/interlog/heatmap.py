@@ -19,7 +19,7 @@ _RAGE_RADIUS_PX = 50
 
 def _load_events(events_path):
     events = []
-    with open(events_path, "r", newline="") as f:
+    with open(events_path, newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if row.get("timestamp"):

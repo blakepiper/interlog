@@ -100,6 +100,7 @@ def _run_live_test(console):
     def on_release(key):
         if key == keyboard.Key.esc:
             return False
+        return None
 
     mouse_listener = mouse.Listener(
         on_move=lambda x, y: bump("mouse move"),

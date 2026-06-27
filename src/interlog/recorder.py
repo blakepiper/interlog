@@ -248,7 +248,7 @@ class InteractionLogger:
 
         # Update metadata with end time and totals
         try:
-            with open(self.metadata_file, "r") as f:
+            with open(self.metadata_file) as f:
                 metadata = json.load(f)
             metadata["end_time"] = datetime.now().isoformat()
             metadata["duration_seconds"] = self._get_timestamp()

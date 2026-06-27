@@ -210,8 +210,8 @@ def _cmd_record(args):
     )
 
     if args.screen:
-        from rich.console import Console as _C
-        _console = _C(highlight=False)
+        from rich.console import Console
+        _console = Console(highlight=False)
         if args.fps < 1:
             _console.print("[red]Error:[/red] --fps must be at least 1.")
             return 1

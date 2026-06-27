@@ -49,7 +49,7 @@ class InteractionAnalyzer:
 
     def load_events(self):
         """Load events from CSV file."""
-        with open(self.events_file, "r") as f:
+        with open(self.events_file) as f:
             reader = csv.DictReader(f)
             for row in reader:
                 # Convert numeric fields (blank cells stay as empty strings)

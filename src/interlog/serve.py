@@ -45,12 +45,12 @@ class _RangeHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def _range_get(self):
         path = self.translate_path(self.path)
         try:
-            f = open(path, "rb")
+            f = open(path, "rb")  # noqa: SIM115 — must open before the with to handle 404 separately
         except OSError:
             self.send_error(404, "File not found")
             return
 
-        try:
+        with f:
             stat = os.fstat(f.fileno())
             total = stat.st_size
             try:
@@ -77,8 +77,6 @@ class _RangeHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     break
                 self.wfile.write(chunk)
                 remaining -= len(chunk)
-        finally:
-            f.close()
 
     def log_message(self, format, *args):
         pass  # keep terminal output clean during serve

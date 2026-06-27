@@ -33,7 +33,7 @@ def _write_events(path, rows):
 
 # --- base_prefix -----------------------------------------------------------
 
-@pytest.mark.parametrize("name,expected", [
+@pytest.mark.parametrize(("name", "expected"), [
     ("events.csv", ""),
     ("p01_events.csv", "p01_"),
     ("sample_events.csv", "sample_"),
@@ -144,7 +144,7 @@ def test_calculate_intensity_rejects_nonpositive_bucket(tmp_path):
     _write_events(events, [{"timestamp": 0.0, "event_type": "mouse_down", "x": 1, "y": 1}])
     a = InteractionAnalyzer(events)
     a.load_events()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="bucket_size"):
         a.calculate_intensity(0)
 
 
@@ -216,7 +216,8 @@ def test_build_viewer_folder_with_metadata(tmp_path):
     }))
 
     out = build_viewer(session / "events.csv", open_browser=False)
-    assert out.exists() and out.name == "viewer.html"
+    assert out.exists()
+    assert out.name == "viewer.html"
 
     data = _embedded_data(out.read_text(encoding="utf-8"))
     assert data["session"] == "p01"
@@ -254,7 +255,7 @@ def test_is_redacted_detects_privacy_mode():
 def test_build_viewer_rejects_empty(tmp_path):
     events = tmp_path / "events.csv"
     _write_events(events, [])
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="No events"):
         build_viewer(events, open_browser=False)
 
 
@@ -273,12 +274,12 @@ def test_parse_range_open_end():
 
 
 def test_parse_range_unsatisfiable():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="unsatisfiable"):
         _parse_range("bytes=200-300", 100)
 
 
 def test_parse_range_bad_prefix():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="bytes range"):
         _parse_range("chunks=0-10", 100)
 
 
@@ -382,7 +383,7 @@ def test_build_report_embeds_heatmap(tmp_path):
         {"timestamp": float(i), "event_type": "mouse_down", "x": 1, "y": 1}
         for i in range(10)
     ])
-    # Fake heatmap PNG (minimal valid 1×1 PNG)
+    # Fake heatmap PNG (minimal valid 1x1 PNG)
     import base64
     png_bytes = base64.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
