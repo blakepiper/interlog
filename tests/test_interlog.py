@@ -9,6 +9,7 @@ import http.client
 import json
 import math
 import re
+import sys
 import threading
 import time
 
@@ -1049,3 +1050,30 @@ def test_lexical_stats_ignores_bare_apostrophe():
     stats = lexical_stats("don't ' '' stop")
     words = {"don't", "stop"}
     assert stats["word_count"] == len(words)
+
+
+def test_report_escapes_session_name(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": float(i), "event_type": "mouse_down", "x": 1, "y": 1}
+        for i in range(5)
+    ])
+    (tmp_path / "metadata.json").write_text(json.dumps(
+        {"session_name": "<script>alert(1)</script> & co"}))
+    html = build_report(tmp_path).read_text(encoding="utf-8")
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_version_matches_installed_metadata():
+    import importlib.metadata
+
+    from interlog import __version__
+    assert __version__ == importlib.metadata.version("interlog")
+
+
+def test_record_rejects_monitor_all_off_windows(monkeypatch, tmp_path):
+    from interlog.cli import main
+    monkeypatch.setattr(sys, "platform", "linux")
+    rc = main(["record", "--screen", "--monitor", "all", "-o", str(tmp_path)])
+    assert rc == 1

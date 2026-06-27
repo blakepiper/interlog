@@ -98,6 +98,7 @@ def serve_viewer(session_dir, viewer_name, host="127.0.0.1", port=0):
         _RangeHTTPRequestHandler, directory=str(Path(session_dir).resolve())
     )
     httpd = http.server.ThreadingHTTPServer((host, port), handler)
+    httpd.daemon_threads = True  # don't let in-flight streams outlive Ctrl+C
     actual_port = httpd.server_address[1]
     url = f"http://{host}:{actual_port}/{viewer_name}"
     return httpd, url

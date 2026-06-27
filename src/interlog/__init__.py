@@ -5,6 +5,11 @@ and turns a session into structured, analyzable data. Everything runs locally â€
 no cloud, no accounts, no telemetry.
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("interlog")
+except PackageNotFoundError:  # running from a source tree without an install
+    __version__ = "0.0.0+dev"
 
 __all__ = ["__version__"]

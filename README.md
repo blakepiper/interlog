@@ -213,6 +213,12 @@ interlog report interlog-data/p01           # shareable HTML report (embeds heat
 `--serve` starts a local HTTP server with Range-request support so the browser
 seeks without downloading the whole file. Press Ctrl+C to stop it.
 
+<p align="center">
+  <img src="docs/img/heatmap.png" alt="interlog heatmap — mouse-movement density with click and rage-click markers" width="760">
+  <br>
+  <em><code>interlog heatmap</code> — where the pointer dwelled, with clicks (white) and rage clicks (red).</em>
+</p>
+
 ### Browse all sessions
 
 ```bash
@@ -313,6 +319,13 @@ data directory.
 
 <p align="center">
   <img src="docs/img/batch.svg" alt="interlog analyze --batch — a cross-session table with a mean ± SD footer row" width="780">
+</p>
+
+The same numbers, compared at a glance — `aggregate.csv` drops straight into a
+plot:
+
+<p align="center">
+  <img src="docs/img/compare.png" alt="Cross-session comparison of clicks per minute and path efficiency" width="760">
 </p>
 
 ### `heatmap` — Generate a density PNG
@@ -485,6 +498,35 @@ columns match the key stats from `summary.csv`.
 
 With `--screen`, metadata also records the video filename, the event↔video
 offset, the capture frame rate, and the `capture_region` (including `dpi_scale`).
+
+## Analyze in Python or R
+
+Every output is plain CSV/JSON, so results drop straight into your stats stack.
+Aggregate a study and plot it in a few lines:
+
+```python
+import json, glob
+import pandas as pd
+
+# Per-session summaries (interlog analyze --json on each session)
+rows = [json.load(open(f)) for f in glob.glob("interlog-data/*/summary.json")]
+df = pd.json_normalize(rows, sep=".")[
+    ["session.name", "metrics.clicks_per_minute", "metrics.mean_path_efficiency"]
+]
+
+# ...or just read the batch aggregate directly
+agg = pd.read_csv("interlog-data/aggregate.csv")
+agg.plot.barh(x="session", y="clicks_per_minute")
+```
+
+```r
+# R
+agg <- read.csv("interlog-data/aggregate.csv")
+barplot(agg$clicks_per_minute, names.arg = agg$session, horiz = TRUE)
+```
+
+The `summary.json` schema version and `provenance` block let you check whether
+two sessions are comparable before pooling them.
 
 ## What the Statistics Tell You
 

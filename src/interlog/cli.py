@@ -264,9 +264,14 @@ def _cmd_record(args):
     )
 
     if args.screen:
+        import sys
         console = _console()
         if args.fps < 1:
             console.print("[red]Error:[/red] --fps must be at least 1.")
+            return 1
+        if args.monitor == "all" and sys.platform != "win32":
+            console.print("[red]Error:[/red] --monitor all is only supported on Windows; "
+                          "use --monitor primary.")
             return 1
         if not _attach_screen_recorder(logger, fps=args.fps, monitor=args.monitor, console=console):
             return 1
@@ -743,6 +748,8 @@ def _cmd_view(args):
         except KeyboardInterrupt:
             httpd.shutdown()
             console.print("\n  [dim]Server stopped.[/dim]\n")
+        finally:
+            httpd.server_close()
 
         return 0
 

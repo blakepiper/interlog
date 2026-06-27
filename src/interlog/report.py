@@ -6,6 +6,7 @@ a shareable artefact, with no external dependencies.
 """
 
 import base64
+import html
 from pathlib import Path
 from string import Template
 
@@ -303,8 +304,9 @@ def build_report(session_path, output=None, bucket_size=5.0):
     s = analyzer.stats
 
     meta = read_session_metadata(events_path)
-    session_name = meta.get("session_name") or session_dir.name
-    start_date = (meta.get("start_time") or "")[:10]
+    # Escaped: these land in HTML and may contain user/dir-supplied characters.
+    session_name = html.escape(meta.get("session_name") or session_dir.name)
+    start_date = html.escape((meta.get("start_time") or "")[:10])
 
     buckets = analyzer.calculate_intensity(bucket_size)
     duration = s["session_duration_seconds"]
@@ -338,7 +340,7 @@ def build_report(session_path, output=None, bucket_size=5.0):
 
     dur_fmt = s["session_duration_formatted"]
 
-    html = _REPORT_TEMPLATE.substitute(
+    rendered = _REPORT_TEMPLATE.substitute(
         session_name=session_name,
         date=start_date or "—",
         duration=dur_fmt,
@@ -368,5 +370,5 @@ def build_report(session_path, output=None, bucket_size=5.0):
         output = session_dir / "report.html"
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(html, encoding="utf-8")
+    output.write_text(rendered, encoding="utf-8")
     return output

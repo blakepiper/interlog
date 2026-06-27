@@ -67,7 +67,8 @@ src/interlog/
 pyproject.toml         # Packaging + the `interlog` console script
 docs/METRICS.md        # Definitions, formulas, and limitations of every metric
 tools/
-  capture_screenshots.py  # Regenerates the README SVGs from synthetic sessions
+  capture_screenshots.py       # Regenerates the README terminal SVGs + heatmap/compare PNGs
+  capture_html_screenshots.py  # Optional: report.html + viewer screenshots (needs a browser)
 tests/
   test_interlog.py     # pytest suite (headless, no pynput/ffmpeg required)
 ```
@@ -96,7 +97,15 @@ code paths over synthetic sessions — never hand-edited. After a change that
 affects terminal output, regenerate them:
 
 ```bash
-python tools/capture_screenshots.py   # writes docs/img/*.svg
+python tools/capture_screenshots.py   # banner.svg, analyze.svg, batch.svg, heatmap.png, compare.png
+```
+
+The HTML report and the synced viewer need a real browser to render, so their
+screenshots live in a separate, optional tool:
+
+```bash
+pip install playwright && playwright install chromium
+python tools/capture_html_screenshots.py   # writes docs/img/report.png, viewer.png
 ```
 
 ## Pull Request Process

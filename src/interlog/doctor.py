@@ -7,6 +7,7 @@ permission issues on macOS/Linux).
 
 import importlib.metadata
 import sys
+import time
 
 
 def _ok(console, msg):
@@ -145,8 +146,15 @@ def _run_live_test(console):
 
     mouse_listener.start()
     keyboard_listener.start()
+    start = time.monotonic()
     try:
-        keyboard_listener.join()
+        while keyboard_listener.is_alive():
+            keyboard_listener.join(0.5)
+            # If nothing is captured within a few seconds, input capture isn't
+            # working (the exact failure this command diagnoses) — don't hang
+            # waiting for an ESC key that will never arrive.
+            if count["n"] == 0 and time.monotonic() - start > 8:
+                break
     except KeyboardInterrupt:
         pass
     finally:

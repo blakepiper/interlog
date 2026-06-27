@@ -72,6 +72,130 @@ def main():
             con.export_svg(title="interlog analyze --batch"), encoding="utf-8")
         print(f"wrote {IMG_DIR / 'batch.svg'}")
 
+        # Heatmap PNG. The demo profiles are deliberately sparse, which makes a
+        # thin heatmap; synthesize a denser movement field so the screenshot
+        # shows what a real session's density map actually looks like.
+        from interlog.heatmap import build_heatmap
+        hm = data / "heatmap_demo"
+        _write_heatmap_session(hm)
+        build_heatmap(hm, output=IMG_DIR / "heatmap.png", sigma=20)
+        print(f"wrote {IMG_DIR / 'heatmap.png'}")
+
+        # Cross-session comparison chart.
+        _render_comparison_chart(rows, IMG_DIR / "compare.png")
+        print(f"wrote {IMG_DIR / 'compare.png'}")
+
+
+def _write_heatmap_session(session_dir):
+    """A dense, clustered movement field that makes the heatmap show real heat."""
+    import csv
+    import json
+    import random
+
+    from interlog.recorder import EVENT_FIELDS
+
+    session_dir.mkdir(parents=True, exist_ok=True)
+    rng = random.Random(7)
+    W, H = 1440, 810
+    # (x, y, weight) — weight scales dwell density so one zone reads "hottest".
+    hotspots = [
+        (330, 240, 1.0),
+        (1050, 250, 0.45),
+        (760, 560, 2.6),   # primary CTA — the hot focal point
+        (300, 650, 0.5),
+        (1120, 640, 0.8),
+    ]
+
+    rows, t = [], 0.0
+
+    def clamp(v, hi):
+        return int(min(hi - 1, max(0, v)))
+
+    def move(x, y):
+        nonlocal t
+        t += 0.012
+        rows.append({**{k: "" for k in EVENT_FIELDS}, "timestamp": round(t, 3),
+                     "event_type": "mouse_move", "x": clamp(x, W), "y": clamp(y, H)})
+
+    def click(x, y):
+        nonlocal t
+        t += 0.18
+        rows.append({**{k: "" for k in EVENT_FIELDS}, "timestamp": round(t, 3),
+                     "event_type": "mouse_down", "x": clamp(x, W), "y": clamp(y, H),
+                     "button": "Button.left"})
+
+    cur = (hotspots[0][0], hotspots[0][1])
+    for hx, hy, weight in hotspots:
+        # navigate from the previous hotspot (a faint trail), then dwell densely
+        for k in range(60):
+            f = k / 60
+            move(cur[0] + (hx - cur[0]) * f + rng.gauss(0, 8),
+                 cur[1] + (hy - cur[1]) * f + rng.gauss(0, 8))
+        # a tight core plus a looser halo reads as a real dwell cluster
+        for _ in range(int(1600 * weight)):
+            move(rng.gauss(hx, 22), rng.gauss(hy, 19))
+        for _ in range(int(500 * weight)):
+            move(rng.gauss(hx, 55), rng.gauss(hy, 48))
+        click(hx, hy)
+        cur = (hx, hy)
+
+    # one rage burst, so a red marker shows alongside the density
+    for _ in range(4):
+        click(330 + rng.randint(-6, 6), 240 + rng.randint(-6, 6))
+
+    with open(session_dir / "events.csv", "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=EVENT_FIELDS)
+        w.writeheader()
+        w.writerows(rows)
+    (session_dir / "metadata.json").write_text(json.dumps({
+        "session_name": "checkout-flow",
+        "synthetic": True,
+        "capture_region": {"x": 0, "y": 0, "width": W, "height": H, "dpi_scale": 1.0},
+    }))
+
+
+def _render_comparison_chart(rows, out_path):
+    """A dark, brand-styled two-panel comparison of sessions (clicks/min + path
+    efficiency) — the kind of visual the README's batch table only hints at."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    names = [r["session"] for r in rows]
+    cpm = [r["clicks_per_minute"] for r in rows]
+    eff = [r["mean_path_efficiency"] or 0 for r in rows]
+    y = range(len(rows))
+
+    bg, fg, dim, cyan, amber = "#0d0d0d", "#e2e8f0", "#64748b", "#22d3ee", "#fbbf24"
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 0.7 * len(rows) + 1.6), dpi=120)
+    fig.patch.set_facecolor(bg)
+
+    for ax, vals, title, color, fmt in (
+        (ax1, cpm, "Clicks / min", cyan, "{:.0f}"),
+        (ax2, eff, "Path efficiency", amber, "{:.2f}"),
+    ):
+        ax.set_facecolor(bg)
+        ax.barh(list(y), vals, color=color, height=0.6, zorder=3)
+        ax.set_title(title, color=fg, fontsize=13, pad=12, loc="left", fontweight="bold")
+        ax.set_yticks(list(y))
+        ax.set_yticklabels(names, color=fg, fontsize=10)
+        ax.invert_yaxis()
+        ax.tick_params(colors=dim, length=0)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.grid(axis="x", color="#1e293b", zorder=0)
+        for yi, v in zip(y, vals):
+            ax.text(v, yi, "  " + fmt.format(v), va="center", color=fg, fontsize=10)
+        if ax is ax2:
+            ax.set_xlim(0, 1)
+            ax.set_yticklabels([])
+
+    fig.suptitle("interlog analyze --batch", color=dim, fontsize=11,
+                 x=0.012, ha="left", y=0.99)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    fig.savefig(out_path, facecolor=bg, bbox_inches="tight")
+    plt.close(fig)
+
 
 if __name__ == "__main__":
     main()
