@@ -1,10 +1,10 @@
 """InterLog - Interaction logger for HCI research.
 
-Captures keyboard and mouse events with precise timestamps so they can be
-synced against a separately-recorded screen capture. No screen recording,
-no networking - everything stays local.
+Captures timestamped keyboard and mouse events, optionally records the screen,
+and turns a session into structured, analyzable data. Everything runs locally —
+no cloud, no accounts, no telemetry.
 """
 
-__version__ = "1.0.0"
+__version__ = "0.1.0"
 
 __all__ = ["__version__"]

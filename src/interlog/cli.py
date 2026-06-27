@@ -210,40 +210,46 @@ def _cmd_record(args):
     )
 
     if args.screen:
+        from rich.console import Console as _C
+        _console = _C(highlight=False)
         if args.fps < 1:
-            print("Error: --fps must be at least 1.")
+            _console.print("[red]Error:[/red] --fps must be at least 1.")
             return 1
-        if not _attach_screen_recorder(logger, fps=args.fps, monitor=args.monitor):
+        if not _attach_screen_recorder(logger, fps=args.fps, monitor=args.monitor, console=_console):
             return 1
 
     logger.start()
     return 0
 
 
-def _attach_screen_recorder(logger, fps, monitor="primary"):
+def _attach_screen_recorder(logger, fps, monitor="primary", console=None):
     """Start ffmpeg screen capture and attach it to the logger. Returns success."""
     from interlog.screen import ScreenRecorder, ffmpeg_path
+    if console is None:
+        from rich.console import Console
+        console = Console(highlight=False)
 
     if not ffmpeg_path():
-        print("Error: ffmpeg not found on PATH, so --screen is unavailable.")
-        print("Install ffmpeg (https://ffmpeg.org/download.html), then check with: interlog doctor")
+        console.print("[red]Error:[/red] ffmpeg not found on PATH, so --screen is unavailable.")
+        console.print("  [dim]Install ffmpeg (https://ffmpeg.org/download.html), "
+                      "then check with: interlog doctor[/dim]")
         return False
 
     video_file = logger.session_dir / "recording.mp4"
     recorder = ScreenRecorder(video_file, fps=fps, monitor=monitor)
 
-    print("Starting screen recorder (ffmpeg)...")
+    console.print("  [dim]Starting screen recorder (ffmpeg)…[/dim]")
     try:
         first_frame = recorder.start_and_wait_until_live()
     except RuntimeError as e:
-        print(f"Error: {e}")
+        console.print(f"[red]Error:[/red] {e}")
         return False
 
     logger.video_file = video_file
     logger.video_first_frame_time = first_frame
     logger.capture_region = recorder.geometry
     logger.stop_callback = recorder.stop
-    print(f"Screen recording to: {video_file}")
+    console.print(f"  [green]✓[/green]  Screen recording → [white]{video_file}[/white]")
     return True
 
 

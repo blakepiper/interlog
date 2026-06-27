@@ -280,6 +280,7 @@ class InteractionLogger:
             console.print(f"  [bold cyan]interlog view[/bold cyan] [white]{session}[/white] [dim]--serve[/dim]")
         else:
             console.print(f"  [bold cyan]interlog view[/bold cyan] [white]{session}[/white]")
+        console.print(f"  [bold cyan]interlog report[/bold cyan] [white]{session}[/white]")
         console.print()
 
     def _flush_events(self):

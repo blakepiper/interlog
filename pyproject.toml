@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "interlog"
-version = "1.0.0"
+version = "0.1.0"
 description = "Lightweight, local interaction-logging tool for HCI research - captures mouse/keyboard events with timestamps and syncs them with a screen recording."
 readme = "README.md"
 requires-python = ">=3.9"

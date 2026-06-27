@@ -193,6 +193,8 @@ class ScreenRecorder:
                 except OSError:
                     pass
             else:
-                print(f"Warning: could not remux to MP4; recording kept as {self.capture_file.name}")
+                import warnings
+                warnings.warn(f"could not remux to MP4; recording kept as {self.capture_file.name}")
         except Exception as e:
-            print(f"Warning: remux failed ({e}); recording kept as {self.capture_file.name}")
+            import warnings
+            warnings.warn(f"remux failed ({e}); recording kept as {self.capture_file.name}")
