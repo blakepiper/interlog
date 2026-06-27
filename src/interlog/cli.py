@@ -247,6 +247,7 @@ def _attach_screen_recorder(logger, fps, monitor="primary", console=None):
 
     logger.video_file = video_file
     logger.video_first_frame_time = first_frame
+    logger.video_fps = fps
     logger.capture_region = recorder.geometry
     logger.stop_callback = recorder.stop
     console.print(f"  [green]✓[/green]  Screen recording → [white]{video_file}[/white]")

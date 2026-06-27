@@ -2,11 +2,13 @@
 
 import csv
 import json
+import platform
 import time
 from datetime import datetime
 from pathlib import Path
 from threading import Event
 
+from interlog import __version__
 from interlog.branding import print_banner
 
 # Column order for the events CSV. Defined once so the header and every
@@ -65,8 +67,52 @@ class InteractionLogger:
         self.video_file = None              # Path to the recording, if any
         self.video_first_frame_time = None  # monotonic time of the video's first frame
         self.video_start_offset = None      # seconds into the video at logger t=0
+        self.video_fps = None               # capture frame rate (for sync error budget)
         self.capture_region = None          # {x, y, width, height, dpi_scale} of the capture
         self.stop_callback = None           # called during stop() (e.g. stop ffmpeg)
+
+    def _build_metadata(self):
+        """Assemble the session metadata dict written at start.
+
+        Provenance fields (tool version, OS, Python) make sessions reproducible
+        and comparable across machines — raw pixel and timing measures only mean
+        the same thing within one environment. Video fields carry the sync offset
+        and the frame-quantization error budget for that capture.
+        """
+        metadata = {
+            "session_name": self.session_name,
+            "start_time": datetime.now().isoformat(),
+            "privacy_mode": self.privacy_mode,
+            "session_dir": str(self.session_dir.absolute()),
+            "provenance": self._provenance(),
+        }
+        if self.video_file is not None:
+            metadata["video_file"] = Path(self.video_file).name
+            metadata["video_start_offset"] = round(self.video_start_offset or 0.0, 3)
+            if self.video_fps is not None:
+                from interlog.sync import frame_quantization_error
+                metadata["video_fps"] = self.video_fps
+                metadata["sync_frame_quantization_seconds"] = round(
+                    frame_quantization_error(self.video_fps), 4
+                )
+            if self.capture_region is not None:
+                metadata["capture_region"] = self.capture_region
+        return metadata
+
+    def _provenance(self):
+        """Environment fingerprint recorded with every session.
+
+        Lets a session be interpreted later: tool version (metric definitions can
+        change between releases), OS, and Python build. Combined with
+        ``capture_region.dpi_scale`` it tells a reader whether raw pixel measures
+        from two sessions are directly comparable.
+        """
+        return {
+            "interlog_version": __version__,
+            "platform": platform.platform(),
+            "system": platform.system(),
+            "python_version": platform.python_version(),
+        }
 
     def _get_timestamp(self):
         """Get relative timestamp in seconds since session start.
@@ -152,9 +198,13 @@ class InteractionLogger:
 
         # If a screen recording is already rolling, compute how far into the
         # video this session's t=0 lands, so the viewer can pre-align them.
-        # Both clocks are monotonic, so the difference is drift-free.
+        # Both clocks are monotonic, so the difference is drift-free. The
+        # alignment formula lives in interlog.sync (the viewer mirrors it).
         if self.video_first_frame_time is not None:
-            self.video_start_offset = self._mono_start - self.video_first_frame_time
+            from interlog.sync import event_offset
+            self.video_start_offset = event_offset(
+                self._mono_start, self.video_first_frame_time
+            )
 
         print_banner()
         console.print()
@@ -168,20 +218,9 @@ class InteractionLogger:
             console.print(f"  [dim]Video[/dim]    [white]{Path(self.video_file).name}[/white]")
         console.print()
 
-        # Save initial metadata
-        metadata = {
-            "session_name": self.session_name,
-            "start_time": datetime.now().isoformat(),
-            "privacy_mode": self.privacy_mode,
-            "session_dir": str(self.session_dir.absolute()),
-        }
-        if self.video_file is not None:
-            metadata["video_file"] = Path(self.video_file).name
-            metadata["video_start_offset"] = round(self.video_start_offset or 0.0, 3)
-            if self.capture_region is not None:
-                metadata["capture_region"] = self.capture_region
+        # Save initial metadata.
         with open(self.metadata_file, "w") as f:
-            json.dump(metadata, f, indent=2)
+            json.dump(self._build_metadata(), f, indent=2)
 
         # Start listeners (pynput imported lazily so the rest of the package -
         # analysis, viewer, tests - doesn't require an input backend/display).

@@ -18,6 +18,7 @@ from interlog.cli import _resolve_events_path
 from interlog.heatmap import _infer_bounds, _rage_timestamps
 from interlog.recorder import EVENT_FIELDS, InteractionLogger
 from interlog.serve import _parse_range, serve_viewer
+from interlog.sync import event_offset, frame_quantization_error, video_time_for_event
 from interlog.text_analysis import is_redacted, lexical_stats, reconstruct_text
 from interlog.viewer import build_viewer
 
@@ -289,6 +290,71 @@ def test_flush_writes_rows(tmp_path):
         rows = list(csv.DictReader(f))
     assert len(rows) == 2
     assert not log.events  # buffer cleared after flush
+
+
+# --- sync (event <-> video alignment) --------------------------------------
+
+def test_event_offset_recovers_video_time():
+    """Mapping an event through the offset lands it on the video clock exactly.
+
+    An event captured at absolute monotonic time T has session time
+    T - mono_start and should map to video time T - first_frame. Composing
+    event_offset + video_time_for_event must recover that, with the mono_start
+    terms cancelling — for any clock origins.
+    """
+    mono_start = 1000.0
+    first_frame = 998.5            # video began 1.5 s before logging started
+    offset = event_offset(mono_start, first_frame)
+    assert offset == pytest.approx(1.5)
+
+    for abs_t in (1000.0, 1002.25, 1010.0):       # absolute monotonic capture times
+        event_time = abs_t - mono_start            # what the recorder stores
+        expected_video_time = abs_t - first_frame  # ground truth on the video clock
+        assert video_time_for_event(event_time, offset) == pytest.approx(expected_video_time)
+
+
+def test_event_offset_negative_when_logging_leads_video():
+    # Logger started before the first frame -> early events map before video t=0.
+    offset = event_offset(1000.0, 1002.0)
+    assert offset == pytest.approx(-2.0)
+    assert video_time_for_event(0.5, offset) == pytest.approx(-1.5)
+
+
+def test_frame_quantization_error_halves_with_fps():
+    assert frame_quantization_error(15) == pytest.approx(1 / 30)
+    assert frame_quantization_error(30) == pytest.approx(1 / 60)
+    assert frame_quantization_error(30) < frame_quantization_error(15)
+
+
+def test_frame_quantization_error_rejects_nonpositive_fps():
+    with pytest.raises(ValueError):
+        frame_quantization_error(0)
+
+
+# --- session metadata ------------------------------------------------------
+
+def test_metadata_includes_provenance(tmp_path):
+    log = InteractionLogger(output_dir=str(tmp_path), session_name="s1")
+    meta = log._build_metadata()
+    prov = meta["provenance"]
+    assert prov["interlog_version"]            # non-empty version string
+    assert prov["python_version"]
+    assert prov["system"]
+    assert "video_start_offset" not in meta    # no video attached
+
+
+def test_metadata_carries_sync_offset_and_error_budget(tmp_path):
+    log = InteractionLogger(output_dir=str(tmp_path), session_name="s1")
+    log._mono_start = 1000.0
+    log.video_file = log.session_dir / "recording.mp4"
+    log.video_first_frame_time = 998.5
+    log.video_fps = 15
+    log.video_start_offset = event_offset(log._mono_start, log.video_first_frame_time)
+
+    meta = log._build_metadata()
+    assert meta["video_start_offset"] == pytest.approx(1.5)
+    assert meta["video_fps"] == 15
+    assert meta["sync_frame_quantization_seconds"] == pytest.approx(1 / 30, abs=1e-4)
 
 
 # --- viewer ----------------------------------------------------------------

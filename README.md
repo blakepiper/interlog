@@ -329,6 +329,10 @@ exceed). Raw pixel metrics (distance, speed) still scale with display scaling an
 the sampling rate, so compare those only across sessions captured on the same
 machine — see `dpi_scale` in `metadata.json`.
 
+> 📐 **[`docs/METRICS.md`](docs/METRICS.md)** defines every metric — formula,
+> units, comparability, literature reference, and limitations — plus the
+> event↔video sync model and its error budget.
+
 ### `intensity.csv`
 
 Time-bucketed interaction counts — great for finding "hot spots" in long videos:

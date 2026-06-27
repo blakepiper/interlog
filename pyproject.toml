@@ -24,11 +24,12 @@ dependencies = ["pynput>=1.7.6", "rich>=12.0", "jeepney>=0.8; sys_platform == 'l
 
 [project.optional-dependencies]
 heatmap = ["matplotlib>=3.5", "numpy>=1.21", "Pillow>=9.0"]
-dev = ["pytest>=7", "ruff>=0.4", "matplotlib>=3.5", "numpy>=1.21", "Pillow>=9.0", "jeepney>=0.8"]
+dev = ["pytest>=7", "ruff>=0.4", "mypy>=1.8", "matplotlib>=3.5", "numpy>=1.21", "Pillow>=9.0", "jeepney>=0.8"]
 
 [project.urls]
 Homepage = "https://github.com/blakepiper/interlog"
 Issues = "https://github.com/blakepiper/interlog/issues"
+Changelog = "https://github.com/blakepiper/interlog/blob/main/CHANGELOG.md"
 
 [project.scripts]
 interlog = "interlog.cli:main"
@@ -38,3 +39,10 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 interlog = ["viewer_template.html"]
+
+[tool.mypy]
+# Run under the CI interpreter; the 3.9 syntax floor is enforced by ruff.
+files = ["src"]
+ignore_missing_imports = true   # pynput/jeepney/numpy stubs are optional
+follow_imports = "silent"
+warn_redundant_casts = true
