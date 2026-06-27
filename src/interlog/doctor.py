@@ -83,6 +83,40 @@ def _check_heatmap_deps(console):
         _ok(console, f"Heatmap deps  [dim](matplotlib {mpl_v})[/dim]")
 
 
+def _check_display_server(console):
+    """Report the display server (Linux only)."""
+    if sys.platform != "linux":
+        return
+    import os
+    session = os.environ.get("XDG_SESSION_TYPE", "")
+    display = os.environ.get("DISPLAY", "")
+    wayland = os.environ.get("WAYLAND_DISPLAY", "")
+    if session == "wayland":
+        xw = f"  [dim](XWayland: {display})[/dim]" if display else ""
+        _ok(console, f"Display  [dim]Wayland ({wayland}){xw}[/dim]")
+    elif display:
+        _ok(console, f"Display  [dim]X11 ({display})[/dim]")
+    else:
+        _warn(console, f"Display  [dim]{session or 'unknown'}[/dim]")
+
+
+def _check_wayland_screen_deps(console):
+    """Check Wayland screen-capture dependencies (Linux Wayland only)."""
+    if sys.platform != "linux":
+        return
+    import os
+    if os.environ.get("XDG_SESSION_TYPE", "").lower() != "wayland":
+        return
+    try:
+        import importlib.metadata
+        import jeepney  # noqa: F401
+        ver = importlib.metadata.version("jeepney")
+        _ok(console, f"jeepney [cyan]{ver}[/cyan]  [dim](Wayland portal screen capture)[/dim]")
+    except ImportError:
+        _warn(console, "jeepney not installed  [dim](needed for 'record --screen' on Wayland)[/dim]")
+        console.print("       [dim]pip install jeepney[/dim]")
+
+
 def _run_live_test(console):
     from pynput import keyboard, mouse
 
@@ -148,6 +182,8 @@ def run_doctor(live=False):
     _check_ffmpeg(console)
     _check_rich(console)
     _check_heatmap_deps(console)
+    _check_display_server(console)
+    _check_wayland_screen_deps(console)
 
     console.print()
     if python_ok and pynput_ok:

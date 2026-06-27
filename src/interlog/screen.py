@@ -6,11 +6,21 @@ to a Matroska (.mkv) container, which tolerates truncation, and is remuxed to
 H.264 MP4 (playable by the HTML viewer) on a clean stop. If the remux can't run,
 the recoverable .mkv is kept.
 
-ffmpeg is an optional, external dependency - only `interlog record --screen`
-needs it.
+Platform support
+----------------
+- **Windows** — gdigrab (built into ffmpeg)
+- **macOS** — avfoundation (built into ffmpeg)
+- **Linux X11** — x11grab (built into ffmpeg)
+- **Linux Wayland** — xdg-desktop-portal + PipeWire via jeepney (installed
+  automatically on Linux). Shows a native screen-picker dialog. Falls back to
+  XWayland (x11grab) if jeepney is absent and ``$DISPLAY`` is set.
+
+ffmpeg is an external runtime dependency — only ``interlog record --screen`` needs it.
 """
 
 import collections
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -24,36 +34,85 @@ def ffmpeg_path():
     return shutil.which("ffmpeg")
 
 
+def _capture_geometry_macos():
+    """Get primary screen bounds on macOS using osascript."""
+    try:
+        result = subprocess.run(
+            ["osascript", "-e",
+             'tell application "Finder" to get bounds of window of desktop'],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            parts = [int(p.strip()) for p in result.stdout.strip().split(",")]
+            if len(parts) == 4:
+                # osascript returns {left, top, right, bottom}
+                return {"x": 0, "y": 0, "width": parts[2], "height": parts[3],
+                        "dpi_scale": 1.0}
+    except Exception:
+        pass
+    return None
+
+
+def _capture_geometry_linux():
+    """Get primary screen bounds on Linux X11 using xrandr."""
+    if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
+        return None  # geometry not reliably detectable without portal interaction
+    display = os.environ.get("DISPLAY", "")
+    if not display:
+        return None
+    try:
+        result = subprocess.run(
+            ["xrandr", "--query"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode != 0:
+            return None
+        # Prefer the monitor tagged as "primary"
+        m = re.search(r"connected primary (\d+)x(\d+)\+(\d+)\+(\d+)", result.stdout)
+        if not m:
+            m = re.search(r"connected (\d+)x(\d+)\+(\d+)\+(\d+)", result.stdout)
+        if m:
+            w, h = int(m.group(1)), int(m.group(2))
+            x, y = int(m.group(3)), int(m.group(4))
+            return {"x": x, "y": y, "width": w, "height": h, "dpi_scale": 1.0}
+    except Exception:
+        pass
+    return None
+
+
 def capture_geometry(monitor="primary"):
     """Return the capture region as {x, y, width, height, dpi_scale}.
 
     ``monitor`` is "primary" (the primary display) or "all" (the full virtual
-    desktop). Returns None where we can't determine geometry (non-Windows): the
+    desktop on Windows). Returns None where geometry can't be determined — the
     capture falls back to the OS default and coordinates stay in global space.
     """
-    if sys.platform != "win32":
-        return None
+    if sys.platform == "win32":
+        import ctypes
 
-    import ctypes
-
-    # Become DPI-aware so metrics are physical pixels matching gdigrab's capture.
-    try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
-    except Exception:
         try:
-            ctypes.windll.user32.SetProcessDPIAware()
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
         except Exception:
-            pass
+            try:
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
 
-    u = ctypes.windll.user32
-    if monitor == "all":
-        # SM_XVIRTUALSCREEN=76, SM_YVIRTUALSCREEN=77, SM_CXVIRTUALSCREEN=78, SM_CYVIRTUALSCREEN=79
-        x, y = u.GetSystemMetrics(76), u.GetSystemMetrics(77)
-        w, h = u.GetSystemMetrics(78), u.GetSystemMetrics(79)
+        u = ctypes.windll.user32
+        if monitor == "all":
+            # SM_XVIRTUALSCREEN=76, SM_YVIRTUALSCREEN=77, SM_CXVIRTUALSCREEN=78, SM_CYVIRTUALSCREEN=79
+            x, y = u.GetSystemMetrics(76), u.GetSystemMetrics(77)
+            w, h = u.GetSystemMetrics(78), u.GetSystemMetrics(79)
+        else:
+            x, y = 0, 0  # the primary monitor is the origin of the virtual desktop
+            w, h = u.GetSystemMetrics(0), u.GetSystemMetrics(1)
+        return {"x": x, "y": y, "width": w, "height": h, "dpi_scale": 1.0}
+
+    elif sys.platform == "darwin":
+        return _capture_geometry_macos()
+
     else:
-        x, y = 0, 0  # the primary monitor is the origin of the virtual desktop
-        w, h = u.GetSystemMetrics(0), u.GetSystemMetrics(1)
-    return {"x": x, "y": y, "width": w, "height": h, "dpi_scale": 1.0}
+        return _capture_geometry_linux()
 
 
 class ScreenRecorder:
@@ -69,6 +128,151 @@ class ScreenRecorder:
         self._live = threading.Event()
         self._stderr_tail = collections.deque(maxlen=40)
         self._readers = []
+        self._portal_conn = None     # jeepney connection, kept alive during recording
+        self._portal_session = None  # xdg-desktop-portal session handle
+
+    def _negotiate_portal(self):
+        """Negotiate an xdg-desktop-portal ScreenCast session.
+
+        Shows a native screen-picker dialog (one user interaction required).
+        Stores the D-Bus connection on self._portal_conn so the portal session
+        stays alive for the duration of the recording.
+
+        Returns the PipeWire node ID (int) for the chosen stream.
+        Requires the ``jeepney`` package.
+        """
+        try:
+            from jeepney import DBusAddress, HeaderFields, MessageType, new_method_call
+            from jeepney.io.blocking import open_dbus_connection
+        except ImportError:
+            raise ImportError(
+                "Wayland screen capture requires jeepney.\n"
+                "Install with: pip install jeepney"
+            )
+
+        conn = open_dbus_connection("SESSION")
+        self._portal_conn = conn  # keep alive until stop()
+        tok = f"il{os.getpid()}"
+
+        portal = DBusAddress(
+            "/org/freedesktop/portal/desktop",
+            bus_name="org.freedesktop.portal.Desktop",
+            interface="org.freedesktop.portal.ScreenCast",
+        )
+
+        def call(method, sig, *body):
+            msg = new_method_call(portal, method, sig, body)
+            return conn.send_and_get_reply(msg).body
+
+        def wait_response(request_path, timeout=120):
+            """Receive D-Bus messages until we get the Response signal on request_path."""
+            deadline = time.monotonic() + timeout
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RuntimeError(
+                        "Portal timed out — did you dismiss the screen-picker dialog?"
+                    )
+                try:
+                    msg = conn.receive(timeout=min(2.0, remaining))
+                except Exception:
+                    continue
+                h = msg.header
+                if (h.message_type == MessageType.signal
+                        and h.fields.get(HeaderFields.path) == request_path
+                        and h.fields.get(HeaderFields.interface)
+                            == "org.freedesktop.portal.Request"
+                        and h.fields.get(HeaderFields.member) == "Response"):
+                    return msg.body  # (response_code: int, results: dict)
+
+        # Step 1: CreateSession
+        (req_path,) = call("CreateSession", "a{sv}", {
+            "handle_token": ("s", tok + "a"),
+            "session_handle_token": ("s", tok + "s"),
+        })
+        code, results = wait_response(req_path)
+        if code != 0:
+            raise RuntimeError(f"Portal CreateSession failed (code {code})")
+        session_handle = results["session_handle"][1]
+        self._portal_session = session_handle
+
+        # Step 2: SelectSources — configure what the picker presents
+        (req_path,) = call("SelectSources", "oa{sv}", session_handle, {
+            "handle_token": ("s", tok + "b"),
+            "types": ("u", 1),         # MONITOR = 1
+            "multiple": ("b", False),
+            "cursor_mode": ("u", 2),   # EMBEDDED = 2
+        })
+        code, _ = wait_response(req_path)
+        if code != 0:
+            raise RuntimeError(f"Portal SelectSources failed (code {code})")
+
+        # Step 3: Start — shows the native picker dialog to the user
+        (req_path,) = call("Start", "osa{sv}", session_handle, "", {
+            "handle_token": ("s", tok + "c"),
+        })
+        code, results = wait_response(req_path, timeout=300)  # give user time to pick
+        if code != 0:
+            raise RuntimeError(
+                "Screen selection cancelled — no screen was selected in the dialog."
+            )
+
+        streams = results.get("streams", ("a(ua{sv})", []))[1]
+        if not streams:
+            raise RuntimeError("Portal returned no streams — try selecting a screen again.")
+        return streams[0][0]  # PipeWire node ID of the first (chosen) stream
+
+    def _close_portal_session(self):
+        """Close the xdg-desktop-portal session and release the D-Bus connection."""
+        if not self._portal_conn or not self._portal_session:
+            return
+        try:
+            from jeepney import DBusAddress, new_method_call
+            session_addr = DBusAddress(
+                self._portal_session,
+                bus_name="org.freedesktop.portal.Desktop",
+                interface="org.freedesktop.portal.Session",
+            )
+            msg = new_method_call(session_addr, "Close", "", ())
+            self._portal_conn.send_and_get_reply(msg)
+        except Exception:
+            pass
+        finally:
+            self._portal_conn = None
+            self._portal_session = None
+
+    def _linux_grab_args(self):
+        """Build ffmpeg input arguments for Linux, handling X11 and Wayland."""
+        session_type = os.environ.get("XDG_SESSION_TYPE", "").lower()
+        display = os.environ.get("DISPLAY", "")
+
+        if session_type == "wayland":
+            try:
+                node_id = self._negotiate_portal()
+                return ["-f", "pipewire", "-i", str(node_id)]
+            except ImportError:
+                # jeepney absent — try XWayland as a degraded fallback
+                if display:
+                    import warnings
+                    warnings.warn(
+                        "jeepney not installed; falling back to XWayland capture — "
+                        "native Wayland windows may not be captured. "
+                        "For full Wayland support: pip install jeepney",
+                        stacklevel=4,
+                    )
+                    return ["-f", "x11grab", "-i", display]
+                raise RuntimeError(
+                    "Wayland screen capture requires jeepney.\n"
+                    "Install with: pip install jeepney\n"
+                    "(or run under an X11 session with $DISPLAY set)"
+                )
+        else:
+            if not display:
+                raise RuntimeError(
+                    "No DISPLAY environment variable set. "
+                    "Ensure you are running in an X11 session."
+                )
+            return ["-f", "x11grab", "-i", display]
 
     def _command(self):
         ff = ffmpeg_path()
@@ -95,9 +299,7 @@ class ScreenRecorder:
         elif sys.platform == "darwin":
             grab = ["-f", "avfoundation", "-i", "Capture screen 0:none"]
         else:
-            import os
-            display = os.environ.get("DISPLAY", ":0.0")
-            grab = ["-f", "x11grab", "-i", display]
+            grab = self._linux_grab_args()
 
         return pre + grab + post
 
@@ -173,6 +375,7 @@ class ScreenRecorder:
             except subprocess.TimeoutExpired:
                 self.proc.kill()
         self._remux()
+        self._close_portal_session()
 
     def _remux(self):
         """Losslessly remux the captured .mkv into an MP4 the viewer can play."""

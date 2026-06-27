@@ -383,8 +383,14 @@ decisions, or waiting for a slow response.
 **macOS** — Accessibility permission required:
 System Settings → Privacy & Security → Accessibility → add your terminal.
 
-**Linux** — On X11 no extra steps are needed. Wayland support depends on
-your compositor; run `interlog doctor --live` to confirm.
+**Linux X11** — No extra steps needed.
+
+**Linux Wayland** — `interlog record --screen` uses xdg-desktop-portal + PipeWire
+(installed automatically as a dependency). A native screen-picker dialog appears
+once when you start recording; choose the monitor and recording begins. Requires
+`xdg-desktop-portal` (ships with KDE Plasma and GNOME) and ffmpeg compiled with
+PipeWire support (standard on Arch/Ubuntu 22.04+/Fedora 38+). Run
+`interlog doctor` to verify.
 
 **Windows** — Works out of the box on Windows 10+.
 
