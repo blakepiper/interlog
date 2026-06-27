@@ -284,12 +284,19 @@ class InteractionLogger:
         console.print()
 
     def _flush_events(self):
-        """Write accumulated events to CSV file."""
+        """Write accumulated events to CSV file.
+
+        Listener threads append to ``self.events`` concurrently, so we detach
+        the current buffer with a single atomic rebind before writing. Writing
+        the old list and clearing it separately would drop any event appended
+        in between; swapping first means those events simply land in the next
+        flush instead of being lost.
+        """
         if not self.events:
             return
 
+        batch, self.events = self.events, []
+
         with open(self.events_file, "a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=EVENT_FIELDS)
-            writer.writerows(self.events)
-
-        self.events.clear()
+            writer.writerows(batch)

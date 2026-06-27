@@ -19,6 +19,15 @@ and turns a session into *structured, analyzable data* — not just a video you
 have to watch end to end. It runs entirely on your machine: no cloud, no
 accounts, no telemetry.
 
+> [!WARNING]
+> **InterLog captures input globally, across every application — not just the
+> window under study.** While recording, it logs every key you press and every
+> mouse action *system-wide*, including anything you type into other apps
+> (passwords, messages, unrelated windows). By default `interlog analyze` also
+> reconstructs the typed text to `transcript.txt`. Record only what you intend
+> to, brief and get consent from participants, and use `--privacy` (and/or
+> `--no-text`) for sensitive sessions. See [Privacy & consent](#privacy--consent).
+
 ## Why InterLog?
 
 Screen recorders (and OBS input-overlay plugins) show you *what happened*.
@@ -30,13 +39,15 @@ InterLog tells you *where it matters and by how much*.
   jump straight to the rage-click bursts and high-intensity "hot spots" via a
   synced timeline (`interlog view`).
 - **Quantified behavior.** Clicks/min, action rate, pauses, scroll distance,
-  rage-click detection, and a composite struggle score (`interlog analyze`).
+  pointer-path efficiency, and rage-click detection (`interlog analyze`) —
+  descriptive measures, not invented composite scores.
 - **Instant visual summary.** Generate a mouse-density heatmap overlaid on a
   captured screen frame — one PNG that tells the whole story (`interlog heatmap`).
 - **Works anywhere on the desktop.** Native apps, prototypes, games, kiosks —
   not just websites (where Hotjar/Clarity stop).
-- **Private by design.** Everything stays local. Optional privacy mode logs
-  *that* keys were pressed without recording *which* keys.
+- **Local, no telemetry.** Nothing leaves your machine — no cloud, no accounts.
+  (Local storage is not the same as participant privacy: capture is global, so
+  see [Privacy & consent](#privacy--consent).)
 
 Best fit: **analyzing longer or repeated HCI/usability sessions** where you need
 evidence and triage, not a one-off clip you'd just watch.
@@ -50,7 +61,7 @@ evidence and triage, not a one-off clip you'd just watch.
 - **HTML report** — Self-contained report with metric cards, SVG activity chart, and embedded heatmap
 - **Batch aggregation** — `interlog analyze --batch` compares all sessions in a directory at once
 - **Session browser** — `interlog list` shows all sessions with duration, event counts, and status
-- **Privacy-first** — Optional privacy mode that logs key events without recording which keys
+- **Privacy mode** — Optional mode that logs key *events* without recording which keys (see caveats below)
 - **Cross-platform** — Works on Windows, macOS, and Linux
 
 ## Quick Start
@@ -110,7 +121,7 @@ interlog analyze interlog-data/p01
 
 Prints a Rich statistics panel to the terminal and writes to the session folder:
 
-- `summary.csv` — all metrics (clicks/min, rage clicks, struggle score, …)
+- `summary.csv` — all metrics (clicks/min, rage clicks, path efficiency, …)
 - `intensity.csv` — time-bucketed interaction counts
 - `transcript.txt` + `text.json` — typed-text reconstruction and lexical stats
   (skipped automatically in privacy mode; pass `--no-text` to disable)
@@ -216,8 +227,9 @@ interlog analyze --batch [DIR]
       --no-text         Skip typed-text reconstruction
 ```
 
-`--batch` prints a cross-session table (duration, clicks/min, rage clicks, struggle
-score) with a mean ± SD row, and writes `aggregate.csv` to the data directory.
+`--batch` prints a cross-session table (duration, clicks/min, rage clicks, long
+pauses, path efficiency) with a mean ± SD row, and writes `aggregate.csv` to the
+data directory.
 
 ### `heatmap` — Generate a density PNG
 
@@ -293,22 +305,29 @@ Key statistics about the session:
 | total_clicks | 45 |
 | clicks_per_minute | 21.2 |
 | rage_clicks_detected | 2 |
-| dead_clicks | 3 |
 | double_clicks | 5 |
-| hesitations | 4 |
+| long_pauses | 4 |
 | total_mouse_distance_px | 18430 |
 | mean_pointer_speed_px_s | 612 |
+| mean_path_efficiency | 0.74 |
 | time_to_first_interaction_seconds | 1.83 |
 | typing_chars_per_minute | 142 |
 | correction_rate | 0.08 |
-| struggle_score | 6.4 |
 | … | … |
 
-Covers: **event counts & rates**, **pointer** (distance, speed, idle/active,
-time-to-first), **timing** (longest/median pause, hesitations), **click
-quality** (rage/dead/double), **keyboard dynamics** (typing speed, inter-key
-interval, correction rate — omitted in privacy mode), and a composite
-**struggle score** for quick triage.
+Covers: **event counts & rates**, **pointer** (distance, speed, path efficiency,
+idle/active, time-to-first), **timing** (longest/median pause, long pauses),
+**click signals** (rage-click bursts, double clicks), and **keyboard dynamics**
+(typing speed, inter-key interval, correction rate — omitted in privacy mode).
+
+These are descriptive measures; InterLog deliberately does **not** fold them into
+a single "struggle"/"frustration" index. **Path efficiency is comparable across
+machines** — it is a dimensionless ratio (display scaling cancels) measured on a
+trajectory resampled to a fixed time base, so it does not depend on the mouse's
+native sampling rate (assuming that rate is at least ~30 Hz, which all real mice
+exceed). Raw pixel metrics (distance, speed) still scale with display scaling and
+the sampling rate, so compare those only across sessions captured on the same
+machine — see `dpi_scale` in `metadata.json`.
 
 ### `intensity.csv`
 
@@ -352,20 +371,47 @@ session; columns match the key stats from `summary.csv`.
 
 ## What the Statistics Tell You
 
-**Rage clicks** — 3+ rapid clicks in the same area. Usually indicates a broken
-or unresponsive UI element, or genuine user confusion.
+These are descriptive signals to help you *triage* a recording — where to look
+first — not validated measures of any mental state. Interpret them alongside the
+video, not in place of it.
 
-**Struggle score** — composite of rage clicks, dead clicks, double clicks, and
-hesitations, normalized per minute. Higher means more friction.
+**Rage-click bursts** — 3+ rapid clicks within a small area, counted once per
+burst. An established UX-analytics signal often associated with a broken or
+unresponsive target, or user confusion.
+
+**Path efficiency** — straight-line distance between consecutive clicks divided
+by the actual pointer path travelled (1.0 = perfectly direct). A standard
+pointer-movement quality measure (MacKenzie, Kauppinen & Silfverberg, CHI 2001).
+Measured on a trajectory resampled to a fixed time base, so it's a dimensionless
+ratio that's comparable across machines and display scaling.
 
 **Clicks per minute** — baseline for comparison across tasks and participants.
 Sudden drops often accompany dense reading or decision-making.
 
-**Longest pause** — gaps between actions reveal moments of confusion, complex
-decisions, or waiting for a slow response.
+**Longest / long pauses** — gaps between actions. `long_pauses` simply counts
+inter-event gaps over 2s; it carries no cognitive interpretation on its own.
 
 **Interaction intensity** — the time-bucketed sparkline (in the terminal and in
 `intensity.csv`) tells you where to look first in a long recording.
+
+## Privacy & consent
+
+InterLog records keyboard and mouse input **globally**, using OS-level hooks. It
+does not know or care which window has focus, so a session captures *everything*
+typed and clicked while it runs — including content in applications unrelated to
+your study (browsers, password managers, chat).
+
+- By default, `interlog analyze` reconstructs the keystrokes into a readable
+  `transcript.txt` and keyword list. Pass `--no-text` to skip that step.
+- `record --privacy` logs that keys were pressed without recording *which*, and
+  suppresses text reconstruction. It does **not** redact mouse coordinates,
+  keystroke timing, or — importantly — the `--screen` recording, which captures
+  whatever is on screen. Privacy mode and `--screen` together are contradictory
+  for truly sensitive content.
+- "Local-only" protects against *exfiltration*, not against capturing more than
+  you intended. For studies with participants, obtain informed consent, follow
+  your institution's ethics/IRB requirements, tell people the capture is
+  system-wide, and have them close unrelated apps before recording.
 
 ## Technical Details
 

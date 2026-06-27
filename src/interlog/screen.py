@@ -34,8 +34,59 @@ def ffmpeg_path():
     return shutil.which("ffmpeg")
 
 
+def _macos_main_display():
+    """Return (logical_w, logical_h, dpi_scale) for the main display, or None.
+
+    pynput reports mouse coordinates in logical points, while avfoundation
+    captures in physical pixels, so dpi_scale = pixels / points (2.0 on a
+    Retina display). Read straight from CoreGraphics via ctypes — no extra deps.
+    """
+    import ctypes
+
+    try:
+        cg = ctypes.CDLL(
+            "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+        )
+    except OSError:
+        return None
+
+    cg.CGMainDisplayID.restype = ctypes.c_uint32
+    cg.CGDisplayCopyDisplayMode.restype = ctypes.c_void_p
+    cg.CGDisplayCopyDisplayMode.argtypes = [ctypes.c_uint32]
+    for fn in ("CGDisplayModeGetWidth", "CGDisplayModeGetHeight",
+               "CGDisplayModeGetPixelWidth"):
+        getattr(cg, fn).restype = ctypes.c_size_t
+        getattr(cg, fn).argtypes = [ctypes.c_void_p]
+    cg.CGDisplayModeRelease.argtypes = [ctypes.c_void_p]
+
+    mode = cg.CGDisplayCopyDisplayMode(cg.CGMainDisplayID())
+    if not mode:
+        return None
+    try:
+        w_pts = cg.CGDisplayModeGetWidth(mode)
+        h_pts = cg.CGDisplayModeGetHeight(mode)
+        w_px = cg.CGDisplayModeGetPixelWidth(mode)
+    finally:
+        cg.CGDisplayModeRelease(mode)
+
+    if not w_pts:
+        return None
+    return w_pts, h_pts, round(w_px / w_pts, 4)
+
+
 def _capture_geometry_macos():
-    """Get primary screen bounds on macOS using osascript."""
+    """Primary-display geometry on macOS.
+
+    width/height are in logical points (the coordinate space pynput reports
+    events in); dpi_scale is the device-pixel ratio, so physical capture pixels
+    = points * dpi_scale.
+    """
+    cg = _macos_main_display()
+    if cg is not None:
+        w_pts, h_pts, scale = cg
+        return {"x": 0, "y": 0, "width": w_pts, "height": h_pts, "dpi_scale": scale}
+
+    # Fallback: Finder bounds (logical points); device-pixel ratio unknown.
     try:
         result = subprocess.run(
             ["osascript", "-e",
@@ -74,6 +125,9 @@ def _capture_geometry_linux():
         if m:
             w, h = int(m.group(1)), int(m.group(2))
             x, y = int(m.group(3)), int(m.group(4))
+            # On X11 the pointer and x11grab share one pixel space, so the
+            # device-pixel ratio is 1.0. (Fractional desktop scaling is not
+            # reliably detectable from xrandr and is not handled here.)
             return {"x": x, "y": y, "width": w, "height": h, "dpi_scale": 1.0}
     except Exception:
         pass
@@ -86,6 +140,10 @@ def capture_geometry(monitor="primary"):
     ``monitor`` is "primary" (the primary display) or "all" (the full virtual
     desktop on Windows). Returns None where geometry can't be determined — the
     capture falls back to the OS default and coordinates stay in global space.
+
+    The returned dict carries a ``dpi_scale`` (device-pixel ratio of the
+    capture). width/height are in the same coordinate space the pointer events
+    use, so downstream code can relate the two without guessing.
     """
     if sys.platform == "win32":
         import ctypes
@@ -106,7 +164,14 @@ def capture_geometry(monitor="primary"):
         else:
             x, y = 0, 0  # the primary monitor is the origin of the virtual desktop
             w, h = u.GetSystemMetrics(0), u.GetSystemMetrics(1)
-        return {"x": x, "y": y, "width": w, "height": h, "dpi_scale": 1.0}
+        # The process is per-monitor DPI-aware (above), so metrics and pointer
+        # events are both in physical pixels; report the system scale factor for
+        # reference (GetDpiForSystem is Windows 10+; default to 1.0 if absent).
+        try:
+            dpi_scale = round(u.GetDpiForSystem() / 96.0, 4)
+        except Exception:
+            dpi_scale = 1.0
+        return {"x": x, "y": y, "width": w, "height": h, "dpi_scale": dpi_scale}
 
     elif sys.platform == "darwin":
         return _capture_geometry_macos()

@@ -6,6 +6,7 @@ drive its event handlers directly), so they run headless in CI on any OS.
 
 import csv
 import json
+import math
 import re
 import time
 
@@ -80,6 +81,100 @@ def test_statistics_and_rage_clicks(tmp_path):
     assert stats["rage_clicks_detected"] == 1
 
 
+def test_rage_clicks_count_each_burst_once(tmp_path):
+    # A single sustained burst must be counted once, not once per start index.
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": 0.1 * i, "event_type": "mouse_down", "x": 100, "y": 100,
+         "button": "Button.left"}
+        for i in range(6)
+    ])
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    s = a.calculate_statistics()
+    assert s["rage_clicks_detected"] == 1
+
+
+def test_path_efficiency_direct_move_is_one(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": 0.0, "event_type": "mouse_down", "x": 0, "y": 0},
+        {"timestamp": 0.1, "event_type": "mouse_move", "x": 50, "y": 0},
+        {"timestamp": 0.2, "event_type": "mouse_move", "x": 100, "y": 0},
+        {"timestamp": 0.3, "event_type": "mouse_down", "x": 100, "y": 0},
+    ])
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    s = a.calculate_statistics()
+    assert s["mean_path_efficiency"] == pytest.approx(1.0, abs=0.01)
+
+
+def test_path_efficiency_penalizes_detour(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": 0.0, "event_type": "mouse_down", "x": 0, "y": 0},
+        {"timestamp": 0.1, "event_type": "mouse_move", "x": 0, "y": 100},
+        {"timestamp": 0.2, "event_type": "mouse_move", "x": 100, "y": 100},
+        {"timestamp": 0.3, "event_type": "mouse_move", "x": 100, "y": 0},
+        {"timestamp": 0.4, "event_type": "mouse_down", "x": 100, "y": 0},
+    ])
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    s = a.calculate_statistics()
+    # straight 100 px over a 300 px path => ~0.33
+    assert s["mean_path_efficiency"] == pytest.approx(1 / 3, abs=0.05)
+
+
+def test_path_efficiency_none_without_moves(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": 0.0, "event_type": "mouse_down", "x": 0, "y": 0},
+        {"timestamp": 0.5, "event_type": "mouse_down", "x": 500, "y": 0},
+    ])
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    s = a.calculate_statistics()
+    assert s["mean_path_efficiency"] is None
+
+
+def _semicircle_events(rate_hz, duration=1.0, radius=100.0):
+    """click A -> semicircular pointer path -> click B, sampled at rate_hz.
+
+    A=(0,0), B=(2r,0); the path bows up over a semicircle of radius r. The
+    straight-line distance is 2r and the arc length is pi*r, so the *true*
+    efficiency is 2/pi ~= 0.637 regardless of how fast the mouse is sampled.
+    """
+    n = int(round(duration * rate_hz))
+    events = []
+    for i in range(n + 1):
+        t = duration * i / n
+        theta = math.pi * (1 - i / n)          # pi -> 0
+        x = radius + radius * math.cos(theta)  # 0 -> 2r
+        y = radius * math.sin(theta)           # bows up
+        etype = "mouse_down" if i in (0, n) else "mouse_move"
+        events.append({"timestamp": round(t, 5), "event_type": etype,
+                       "x": int(round(x)), "y": int(round(y))})
+    return events
+
+
+def test_path_efficiency_is_sampling_rate_invariant(tmp_path):
+    # The same physical motion captured at different mouse-sampling rates must
+    # yield (near-)identical efficiency — that's what makes it cross-machine.
+    eff = {}
+    for rate in (60, 120, 240):
+        path = tmp_path / f"events_{rate}.csv"
+        _write_events(path, _semicircle_events(rate))
+        a = InteractionAnalyzer(path)
+        a.load_events()
+        eff[rate] = a.calculate_statistics()["mean_path_efficiency"]
+
+    # Each rate lands near the analytic semicircle efficiency 2/pi ...
+    for rate, value in eff.items():
+        assert value == pytest.approx(2 / math.pi, abs=0.02)
+    # ... and crucially they agree with each other regardless of native rate.
+    assert max(eff.values()) - min(eff.values()) < 0.01
+
+
 def test_pointer_and_timing_metrics(tmp_path):
     events = tmp_path / "events.csv"
     _write_events(events, [
@@ -96,7 +191,7 @@ def test_pointer_and_timing_metrics(tmp_path):
     assert s["total_mouse_distance_px"] == pytest.approx(20.0, abs=0.1)
     assert s["mean_pointer_speed_px_s"] == pytest.approx(100.0, abs=1.0)  # 20px / 0.2s
     assert s["time_to_first_interaction_seconds"] == pytest.approx(0.5, abs=0.01)
-    assert s["hesitations"] == 1
+    assert s["long_pauses"] == 1
     assert s["idle_time_seconds"] == pytest.approx(4.5, abs=0.1)
 
 
@@ -108,19 +203,19 @@ def test_click_quality_and_keyboard_metrics(tmp_path):
         {"timestamp": 2.0, "event_type": "key_press", "key": "h"},
         {"timestamp": 2.1, "event_type": "key_press", "key": "Key.backspace"},
         {"timestamp": 2.2, "event_type": "key_press", "key": "i"},
-        {"timestamp": 10.0, "event_type": "mouse_down", "x": 300, "y": 300},  # dead click (nothing after)
     ])
     a = InteractionAnalyzer(events)
     a.load_events()
     s = a.calculate_statistics()
 
     assert s["double_clicks"] == 1
-    assert s["dead_clicks"] == 1
     assert s["backspaces"] == 1
     assert s["correction_rate"] == pytest.approx(1 / 3, abs=0.01)
     assert s["typing_chars_per_minute"] is not None
     assert s["mean_interkey_interval_seconds"] == pytest.approx(0.1, abs=0.01)
-    assert s["struggle_score"] > 0
+    # removed metrics should no longer be reported
+    assert "dead_clicks" not in s
+    assert "struggle_score" not in s
 
 
 def test_privacy_mode_nulls_keyboard_identity_metrics(tmp_path):
@@ -355,7 +450,9 @@ def test_batch_analyze_returns_one_row_per_session(tmp_path):
     assert sessions == {"p01", "p02"}
     for r in rows:
         assert "clicks_per_minute" in r
-        assert "struggle_score" in r
+        assert "long_pauses" in r
+        assert "mean_path_efficiency" in r
+        assert "struggle_score" not in r
 
 
 # --- build_report ----------------------------------------------------------
@@ -374,7 +471,8 @@ def test_build_report_creates_html(tmp_path):
     html = output.read_text(encoding="utf-8")
     assert "InterLog Report" in html
     assert "<svg" in html
-    assert "Struggle" in html
+    assert "Interaction Signals" in html
+    assert "Struggle" not in html
 
 
 def test_build_report_embeds_heatmap(tmp_path):

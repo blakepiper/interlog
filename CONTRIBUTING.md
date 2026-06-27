@@ -73,7 +73,8 @@ tests/
 - **No unnecessary comments**: Well-named code is self-explanatory; only comment non-obvious *why*s
 - **Minimal dependencies**: Core install needs only `pynput` and `rich`; heavy deps (`matplotlib`, `numpy`, `Pillow`) are optional extras
 - **Cross-platform**: Test on Windows / Mac / Linux if possible
-- **Privacy-first**: Never add telemetry or network features
+- **Local-only**: Never add telemetry or network features. Capture is global, so
+  be conservative about what gets logged or written to disk by default.
 
 ## Running Tests
 

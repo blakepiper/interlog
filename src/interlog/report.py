@@ -9,7 +9,7 @@ import base64
 from pathlib import Path
 from string import Template
 
-from interlog.analyzer import InteractionAnalyzer
+from interlog.analyzer import LONG_PAUSE_THRESHOLD_S, InteractionAnalyzer
 from interlog.viewer import _read_metadata
 
 
@@ -133,28 +133,26 @@ _REPORT_TEMPLATE = Template("""\
 </section>
 
 <section class="section">
-  <div class="section-title">Friction Indicators</div>
+  <div class="section-title">
+    Interaction Signals
+    <span class="note">descriptive counts, not a diagnosis</span>
+  </div>
   <div class="metrics">
     <div class="card">
-      <div class="label">Rage clicks</div>
+      <div class="label">Rage-click bursts</div>
       <div class="value" style="color:$rage_color">$rage_clicks</div>
     </div>
     <div class="card">
-      <div class="label">Dead clicks</div>
-      <div class="value">$dead_clicks</div>
+      <div class="label">Double clicks</div>
+      <div class="value">$double_clicks</div>
     </div>
     <div class="card">
-      <div class="label">Hesitations</div>
-      <div class="value">$hesitations</div>
+      <div class="label">Long pauses <span class="unit">&gt;${long_pause_threshold}s</span></div>
+      <div class="value">$long_pauses</div>
     </div>
     <div class="card">
-      <div class="label">
-        Struggle score
-        <span class="badge" style="background:${struggle_color}22;color:$struggle_color">$struggle_label</span>
-      </div>
-      <div class="value" style="color:$struggle_color">
-        $struggle_score<span class="unit">/min</span>
-      </div>
+      <div class="label">Path efficiency</div>
+      <div class="value">$path_efficiency</div>
     </div>
   </div>
 </section>
@@ -176,7 +174,7 @@ _REPORT_TEMPLATE = Template("""\
 </section>
 
 <footer class="footer">
-  Generated with <strong>InterLog</strong> &mdash; local, private interaction logging for HCI research
+  Generated with <strong>InterLog</strong> &mdash; local interaction logging for HCI research
 </footer>
 
 </div>
@@ -238,14 +236,6 @@ def _build_sparkline_svg(buckets, rage_ts, duration, width=840, height=90):
         + "".join(parts)
         + "</svg>"
     )
-
-
-def _struggle_info(score):
-    if score < 2:
-        return "LOW", "#22c55e"
-    if score < 5:
-        return "MODERATE", "#eab308"
-    return "HIGH", "#ef4444"
 
 
 # ---------------------------------------------------------------------------
@@ -314,8 +304,9 @@ def build_report(session_path, output=None, bucket_size=5.0):
             f'</div>'
         )
 
-    struggle_label, struggle_color = _struggle_info(s["struggle_score"])
     rage_color = "#ef4444" if s["rage_clicks_detected"] > 0 else "#e2e8f0"
+    eff = s.get("mean_path_efficiency")
+    path_efficiency = f"{eff:.2f}" if eff is not None else "n/a"
 
     dur_fmt = s["session_duration_formatted"]
 
@@ -332,11 +323,10 @@ def build_report(session_path, output=None, bucket_size=5.0):
         scroll_distance=f"{s['total_scroll_distance']:,} px",
         rage_clicks=str(s["rage_clicks_detected"]),
         rage_color=rage_color,
-        dead_clicks=str(s["dead_clicks"]),
-        hesitations=str(s["hesitations"]),
-        struggle_score=f"{s['struggle_score']:.2f}",
-        struggle_label=struggle_label,
-        struggle_color=struggle_color,
+        double_clicks=str(s["double_clicks"]),
+        long_pauses=str(s["long_pauses"]),
+        long_pause_threshold=int(LONG_PAUSE_THRESHOLD_S),
+        path_efficiency=path_efficiency,
         bucket_size=int(bucket_size) if bucket_size == int(bucket_size) else bucket_size,
         sparkline_svg=sparkline_svg,
         heatmap_block=heatmap_block,

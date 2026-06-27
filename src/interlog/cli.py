@@ -510,53 +510,48 @@ def _cmd_analyze_batch(args):
     table.add_column("Clicks/min", justify="right", min_width=10, style="cyan")
     table.add_column("Act/min", justify="right", min_width=7, style="cyan")
     table.add_column("Rage", justify="right", min_width=5)
-    table.add_column("Dead", justify="right", min_width=5)
-    table.add_column("Pause", justify="right", min_width=5)
-    table.add_column("Struggle", justify="right", min_width=8)
-
-    def _struggle_fmt(v):
-        if v < 2:
-            return f"[green]{v:.2f}[/green]"
-        if v < 5:
-            return f"[yellow]{v:.2f}[/yellow]"
-        return f"[red]{v:.2f}[/red]"
+    table.add_column("Double", justify="right", min_width=6)
+    table.add_column("Long pause", justify="right", min_width=10)
+    table.add_column("Path eff", justify="right", min_width=8)
 
     for r in rows:
+        eff = r["mean_path_efficiency"]
         table.add_row(
             r["session"],
             r["duration_formatted"],
             f"{r['clicks_per_minute']:.1f}",
             f"{r['actions_per_minute']:.1f}",
             str(r["rage_clicks"]),
-            str(r["dead_clicks"]),
-            str(r["hesitations"]),
-            _struggle_fmt(r["struggle_score"]),
+            str(r["double_clicks"]),
+            str(r["long_pauses"]),
+            f"{eff:.2f}" if eff is not None else "[dim]–[/dim]",
         )
 
-    # Mean ± SD footer row
+    # Mean ± SD footer row (skips sessions where a metric is undefined)
     def _ms(key):
-        vals = [r[key] for r in rows]
+        vals = [r[key] for r in rows if r[key] is not None]
+        if not vals:
+            return None, None
         mean = sum(vals) / len(vals)
         sd = _stats.stdev(vals) if len(vals) > 1 else 0.0
         return mean, sd
 
-    m_cpm, s_cpm = _ms("clicks_per_minute")
-    m_apm, s_apm = _ms("actions_per_minute")
-    m_rage, s_rage = _ms("rage_clicks")
-    m_dead, s_dead = _ms("dead_clicks")
-    m_hes, s_hes = _ms("hesitations")
-    m_str, s_str = _ms("struggle_score")
+    def _fmt_ms(stat, prec=1):
+        mean, sd = stat
+        if mean is None:
+            return "[dim]–[/dim]"
+        return f"[dim]{mean:.{prec}f} ±{sd:.{prec}f}[/dim]"
 
     table.add_section()
     table.add_row(
         "[dim]mean ± SD[/dim]",
         "[dim]—[/dim]",
-        f"[dim]{m_cpm:.1f} ±{s_cpm:.1f}[/dim]",
-        f"[dim]{m_apm:.1f} ±{s_apm:.1f}[/dim]",
-        f"[dim]{m_rage:.1f} ±{s_rage:.1f}[/dim]",
-        f"[dim]{m_dead:.1f} ±{s_dead:.1f}[/dim]",
-        f"[dim]{m_hes:.1f} ±{s_hes:.1f}[/dim]",
-        f"[dim]{m_str:.2f} ±{s_str:.2f}[/dim]",
+        _fmt_ms(_ms("clicks_per_minute")),
+        _fmt_ms(_ms("actions_per_minute")),
+        _fmt_ms(_ms("rage_clicks")),
+        _fmt_ms(_ms("double_clicks")),
+        _fmt_ms(_ms("long_pauses")),
+        _fmt_ms(_ms("mean_path_efficiency"), prec=2),
     )
 
     console.print(table)
@@ -566,7 +561,7 @@ def _cmd_analyze_batch(args):
     fieldnames = [
         "session", "duration_seconds", "duration_formatted",
         "total_events", "total_clicks", "clicks_per_minute", "actions_per_minute",
-        "rage_clicks", "dead_clicks", "hesitations", "struggle_score",
+        "rage_clicks", "double_clicks", "long_pauses", "mean_path_efficiency",
     ]
     with open(agg_path, "w", newline="", encoding="utf-8") as f:
         writer = _csv.DictWriter(f, fieldnames=fieldnames)

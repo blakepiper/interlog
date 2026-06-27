@@ -64,8 +64,8 @@ interlog analyze --batch
 ```
 
 Prints a table comparing all sessions in `./interlog-data/` — duration,
-clicks/min, rage clicks, struggle score — with a mean ± SD row, and writes
-`aggregate.csv` for further analysis in R or Excel.
+clicks/min, rage clicks, long pauses, path efficiency — with a mean ± SD row,
+and writes `aggregate.csv` for further analysis in R or Excel.
 
 ## Browse all sessions
 
@@ -109,6 +109,9 @@ interlog record --privacy --name sensitive_session
 ```
 
 Typed-text analysis and keyboard identity metrics are automatically suppressed.
+This does **not** redact mouse positions, keystroke timing, or a `--screen`
+recording, and capture is still system-wide — see "Privacy & consent" in the
+README before recording participants.
 
 ### Custom output directory
 
@@ -120,11 +123,14 @@ interlog heatmap ./study_2024/sessions/p01
 
 ## What to Look For
 
-**Rage clicks** — 3+ rapid clicks in the same spot. Usually means a broken
-button, unresponsive UI, or genuine confusion. The heatmap marks them in red.
+**Rage-click bursts** — 3+ rapid clicks in the same spot, counted once per
+burst. Often a broken button, unresponsive UI, or confusion. Marked red on the
+heatmap. A triage signal, not a verdict.
 
-**Struggle score** — composite of rage/dead/double clicks and hesitations,
-normalized per minute. Higher = more friction.
+**Path efficiency** — how direct the pointer travel between clicks is (1.0 =
+straight line). Lower values suggest hunting/overshooting. Measured on a
+rate-normalised trajectory, so it's comparable across machines and display
+scaling.
 
 **High interaction density** — bursts of activity in `intensity.csv` (or the
 terminal sparkline) tell you exactly where to scrub in a long recording.
