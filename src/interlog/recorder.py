@@ -22,6 +22,23 @@ EVENT_FIELDS = [
 FLUSH_THRESHOLD = 10
 
 
+def session_provenance():
+    """Environment fingerprint recorded with every session.
+
+    Lets a session be interpreted later: tool version (metric definitions can
+    change between releases), OS, and Python build. Combined with
+    ``capture_region.dpi_scale`` it tells a reader whether raw pixel measures
+    from two sessions are directly comparable. Shared by the recorder and the
+    synthetic-session generator so both stamp sessions the same way.
+    """
+    return {
+        "interlog_version": __version__,
+        "platform": platform.platform(),
+        "system": platform.system(),
+        "python_version": platform.python_version(),
+    }
+
+
 class InteractionLogger:
     """Captures and logs keyboard and mouse interactions."""
 
@@ -100,19 +117,8 @@ class InteractionLogger:
         return metadata
 
     def _provenance(self):
-        """Environment fingerprint recorded with every session.
-
-        Lets a session be interpreted later: tool version (metric definitions can
-        change between releases), OS, and Python build. Combined with
-        ``capture_region.dpi_scale`` it tells a reader whether raw pixel measures
-        from two sessions are directly comparable.
-        """
-        return {
-            "interlog_version": __version__,
-            "platform": platform.platform(),
-            "system": platform.system(),
-            "python_version": platform.python_version(),
-        }
+        """Environment fingerprint recorded with every session (see module fn)."""
+        return session_provenance()
 
     def _get_timestamp(self):
         """Get relative timestamp in seconds since session start.

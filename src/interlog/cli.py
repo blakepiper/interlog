@@ -3,6 +3,7 @@
 Exposes a single ``interlog`` command with subcommands:
 
     interlog record    Capture mouse/keyboard interactions to CSV.
+    interlog demo      Generate a synthetic sample session to try InterLog.
     interlog analyze   Generate statistics from a recorded session.
     interlog view      Open the synced HTML timeline viewer.
     interlog list      List all recorded sessions.
@@ -24,6 +25,8 @@ def _build_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 Examples:
+  interlog demo                                Generate a sample session to explore (no recording)
+  interlog demo --sessions 4                   Generate several sessions for analyze --batch
   interlog record                              Start a session in the current directory
   interlog record --privacy --name p01         Privacy mode, custom session name
   interlog record -o ./sessions                Write session files to ./sessions
@@ -110,6 +113,25 @@ Examples:
         help="Data directory to list sessions from (default: ./interlog-data).",
     )
     p_list.set_defaults(func=_cmd_list)
+
+    # demo
+    p_demo = sub.add_parser(
+        "demo", help="Generate a synthetic sample session to try InterLog.",
+    )
+    p_demo.add_argument(
+        "-o", "--output", default="interlog-demo",
+        help="Output directory (default: ./interlog-demo).",
+    )
+    p_demo.add_argument(
+        "--sessions", type=int, default=1, metavar="N",
+        help="Number of varied sessions to generate (default: 1; >1 is good for "
+             "trying analyze --batch).",
+    )
+    p_demo.add_argument(
+        "--seed", type=int, default=7,
+        help="Random seed for reproducible data (default: 7).",
+    )
+    p_demo.set_defaults(func=_cmd_demo)
 
     # analyze
     p_analyze = sub.add_parser(
@@ -298,6 +320,41 @@ def _cmd_heatmap(args):
         except Exception:
             pass
 
+    return 0
+
+
+def _cmd_demo(args):
+    from rich.console import Console
+    from interlog.demo import generate
+
+    console = Console(highlight=False)
+    if args.sessions < 1:
+        console.print("[red]Error:[/red] --sessions must be at least 1.")
+        return 1
+
+    out = Path(args.output)
+    with console.status("[cyan]Generating synthetic session(s)…[/cyan]", spinner="dots"):
+        paths = generate(out, sessions=args.sessions, seed=args.seed)
+
+    console.print()
+    console.rule("[bold cyan]Demo data ready[/bold cyan]", style="cyan dim")
+    console.print()
+    console.print(
+        f"  [green]✓[/green]  {len(paths)} synthetic "
+        f"session{'s' if len(paths) != 1 else ''}  [dim]→[/dim]  [white]{out}[/white]"
+    )
+    console.print("  [dim]Synthetic data (flagged in metadata.json) — not a real capture.[/dim]")
+    console.print()
+    console.rule("[dim]Try it[/dim]", style="dim")
+    if len(paths) == 1:
+        sess = paths[0]
+        console.print(f"  [bold cyan]interlog analyze[/bold cyan] [white]{sess}[/white]")
+        console.print(f"  [bold cyan]interlog view[/bold cyan] [white]{sess}[/white]")
+        console.print(f"  [bold cyan]interlog report[/bold cyan] [white]{sess}[/white]")
+    else:
+        console.print(f"  [bold cyan]interlog analyze --batch[/bold cyan] [white]{out}[/white]")
+        console.print(f"  [bold cyan]interlog analyze[/bold cyan] [white]{paths[0]}[/white]")
+    console.print()
     return 0
 
 
@@ -795,6 +852,7 @@ def main(argv=None):
         table.add_column("", style="bold cyan", min_width=10)
         table.add_column("", style="white")
         table.add_row("record", "Capture mouse + keyboard  [dim](add --screen for video)[/dim]")
+        table.add_row("demo", "Generate a synthetic sample session to explore  [dim](no recording needed)[/dim]")
         table.add_row("list", "List all recorded sessions")
         table.add_row("analyze", "Compute session statistics  [dim](add --batch to aggregate a directory)[/dim]")
         table.add_row("heatmap", "Generate a mouse movement and click heatmap PNG")

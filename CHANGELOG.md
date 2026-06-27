@@ -7,6 +7,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **`interlog demo`** — generates realistic synthetic sessions (events +
+  metadata, flagged `"synthetic": true`) so newcomers can explore `analyze`,
+  `view`, `report`, and `--batch` without recording. Reproducible by `--seed`;
+  `--sessions N` produces a varied set for batch aggregation. The synthesis lives
+  in `interlog.demo` and also backs the README screenshots.
 - **README screenshots** — crisp SVGs of `analyze` and `analyze --batch`,
   rendered from the real code paths via `tools/capture_screenshots.py` (so they
   can't drift), plus Python-version and license badges.

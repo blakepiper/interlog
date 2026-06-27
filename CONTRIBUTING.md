@@ -52,6 +52,7 @@ interlog analyze interlog-data/test_session
 src/interlog/
   cli.py               # Entry point: all subcommands
   recorder.py          # InteractionLogger — captures events to CSV
+  demo.py              # Synthetic session generator behind `interlog demo`
   analyzer.py          # InteractionAnalyzer — statistics, intensity, sparkline, batch_analyze
   screen.py            # ScreenRecorder — ffmpeg screen capture (record --screen)
   viewer.py            # build_viewer() — generates the synced HTML timeline viewer

@@ -237,6 +237,57 @@ def test_privacy_mode_nulls_keyboard_identity_metrics(tmp_path):
     assert s["interkey_interval_cv"] is None  # too few intervals here
 
 
+# --- demo data generation --------------------------------------------------
+
+def test_demo_generate_single_session(tmp_path):
+    from interlog.demo import generate
+    paths = generate(tmp_path, sessions=1, seed=7)
+    assert len(paths) == 1
+    sess = paths[0]
+    assert sess.name == "demo"
+    assert (sess / "events.csv").exists()
+
+    a = InteractionAnalyzer(sess / "events.csv")
+    a.load_events()
+    s = a.calculate_statistics()
+    assert s["total_events"] > 0
+    assert s["total_clicks"] > 0
+
+    meta = json.loads((sess / "metadata.json").read_text())
+    assert meta["synthetic"] is True            # never mistaken for a real capture
+    assert meta["profile"] == "checkout"
+    assert meta["provenance"]["interlog_version"]
+
+
+def test_demo_generate_multiple_feeds_batch(tmp_path):
+    from interlog.demo import generate
+    paths = generate(tmp_path, sessions=4, seed=1)
+    assert len(paths) == 4
+    rows = batch_analyze(tmp_path)
+    assert len(rows) == 4
+
+
+def test_demo_is_reproducible_for_seed(tmp_path):
+    from interlog.demo import write_session
+    a = write_session(tmp_path / "a", "s", profile="checkout", seed=42)
+    b = write_session(tmp_path / "b", "s", profile="checkout", seed=42)
+    assert (a / "events.csv").read_text() == (b / "events.csv").read_text()
+
+
+def test_demo_rejects_unknown_profile(tmp_path):
+    from interlog.demo import write_session
+    with pytest.raises(ValueError):
+        write_session(tmp_path, "s", profile="nope")
+
+
+def test_demo_command_creates_sessions(tmp_path):
+    from interlog.cli import main
+    out = tmp_path / "interlog-demo"
+    rc = main(["demo", "-o", str(out), "--sessions", "2"])
+    assert rc == 0
+    assert len(batch_analyze(out)) == 2
+
+
 # --- terminal rendering (capturable) ---------------------------------------
 
 def _render(renderable_call):

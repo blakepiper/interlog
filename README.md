@@ -98,6 +98,20 @@ interlog doctor          # checks Python, pynput, ffmpeg, and heatmap deps
 interlog doctor --live   # confirm input capture works (press ESC to stop)
 ```
 
+### Try it in 10 seconds (no recording)
+
+Not sure what InterLog produces? Generate a realistic synthetic session and
+explore the outputs without recording yourself:
+
+```bash
+interlog demo                 # writes ./interlog-demo/demo
+interlog analyze interlog-demo/demo
+interlog demo --sessions 4    # a small set for: interlog analyze --batch interlog-demo
+```
+
+Demo data is clearly flagged `"synthetic": true` in its `metadata.json`, so it is
+never confused with a real capture.
+
 ### Record a session
 
 ```bash
@@ -212,6 +226,19 @@ interlog record [OPTIONS]
       --fps N           Screen capture frame rate (default: 15)
       --monitor {primary,all}   Which display to capture (default: primary)
 ```
+
+### `demo` — Generate synthetic sample data
+
+```
+interlog demo [OPTIONS]
+
+  -o, --output DIR      Output directory (default: ./interlog-demo)
+      --sessions N      Number of varied sessions to generate (default: 1)
+      --seed N          Random seed for reproducible data (default: 7)
+```
+
+Synthesizes realistic sessions (events + metadata, flagged `synthetic`) so you
+can explore `analyze`, `view`, `report`, and `--batch` without recording.
 
 ### `list` — Browse sessions
 
