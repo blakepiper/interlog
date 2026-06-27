@@ -7,6 +7,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Structured `summary.json` export** — `interlog analyze --json` now writes a
+  self-describing document (schema version, tool + session provenance,
+  `capture_region`/`dpi_scale`, and native-typed metrics) instead of a bare stats
+  dump, so results drop cleanly into pandas/R and carry the context needed to
+  judge cross-session comparability. Documented in `docs/METRICS.md`.
 - **`interlog demo`** — generates realistic synthetic sessions (events +
   metadata, flagged `"synthetic": true`) so newcomers can explore `analyze`,
   `view`, `report`, and `--batch` without recording. Reproducible by `--seed`;
@@ -46,6 +51,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `interlog.sync.event_offset` for the alignment offset.
 - `analyze` and `analyze --batch` rendering accept an injectable console
   (`print_summary(console=…)`, `render_batch_table`) so output is capturable.
+- Session metadata loading is now a shared `read_session_metadata()` used by the
+  viewer, report, and the JSON export.
 
 ### Fixed
 - The summary keyboard panel labelled a session with no typing as "privacy

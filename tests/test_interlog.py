@@ -237,6 +237,74 @@ def test_privacy_mode_nulls_keyboard_identity_metrics(tmp_path):
     assert s["interkey_interval_cv"] is None  # too few intervals here
 
 
+# --- structured summary.json export ----------------------------------------
+
+def test_build_summary_export_structure(tmp_path):
+    session = tmp_path / "p01"
+    _write_events(session / "events.csv", [
+        {"timestamp": 0.0, "event_type": "mouse_down", "x": 10, "y": 10},
+        {"timestamp": 1.0, "event_type": "mouse_down", "x": 99, "y": 99},
+    ])
+    (session / "metadata.json").write_text(json.dumps({
+        "session_name": "p01",
+        "privacy_mode": False,
+        "provenance": {"interlog_version": "9.9.9", "system": "TestOS",
+                       "python_version": "3.12.0", "platform": "test"},
+        "capture_region": {"x": 0, "y": 0, "width": 1920, "height": 1080, "dpi_scale": 2.0},
+    }))
+
+    a = InteractionAnalyzer(session / "events.csv")
+    a.load_events()
+    a.calculate_statistics()
+    export = a.build_summary_export()
+
+    assert export["schema"] == "interlog/summary"
+    assert export["schema_version"]            # present, non-empty
+    assert export["tool_version"]              # the analyzing tool's version
+    assert export["session"]["name"] == "p01"
+    assert export["session"]["provenance"]["interlog_version"] == "9.9.9"
+    assert export["session"]["capture_region"]["dpi_scale"] == 2.0
+    # metrics keep native JSON types (not stringified like the CSV)
+    assert export["metrics"]["total_clicks"] == 2
+    assert isinstance(export["metrics"]["total_clicks"], int)
+    assert "comparability" in export["metrics_notes"]
+
+
+def test_save_summary_json_roundtrips(tmp_path):
+    session = tmp_path / "s"
+    _write_events(session / "events.csv", [
+        {"timestamp": 0.0, "event_type": "mouse_down", "x": 1, "y": 1},
+        {"timestamp": 0.5, "event_type": "key_press", "key": "a"},
+    ])
+    a = InteractionAnalyzer(session / "events.csv")
+    a.load_events()
+    a.calculate_statistics()
+    out = a.save_summary_json()
+    assert out.name == "summary.json"
+    loaded = json.loads(out.read_text())
+    assert loaded["metrics"]["total_keypresses"] == 1
+
+
+def test_summary_export_marks_synthetic_from_metadata(tmp_path):
+    from interlog.demo import generate
+    paths = generate(tmp_path, seed=3)
+    a = InteractionAnalyzer(paths[0] / "events.csv")
+    a.load_events()
+    a.calculate_statistics()
+    assert a.build_summary_export()["session"]["synthetic"] is True
+
+
+def test_analyze_json_flag_writes_structured_export(tmp_path):
+    from interlog.cli import main
+    from interlog.demo import generate
+    sess = generate(tmp_path, seed=5)[0]
+    rc = main(["analyze", str(sess), "--json", "--no-text"])
+    assert rc == 0
+    export = json.loads((sess / "summary.json").read_text())
+    assert export["schema"] == "interlog/summary"
+    assert export["session"]["provenance"]["interlog_version"]
+
+
 # --- demo data generation --------------------------------------------------
 
 def test_demo_generate_single_session(tmp_path):

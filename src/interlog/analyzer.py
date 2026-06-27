@@ -23,11 +23,18 @@ the session metadata.
 """
 
 import csv
+import json
 import math
 import statistics
 from collections import defaultdict
 from datetime import timedelta
 from pathlib import Path
+
+from interlog import __version__
+
+# Version of the summary.json structure (not the tool version). Bump on any
+# breaking change to the export's shape so downstream readers can adapt.
+SUMMARY_SCHEMA_VERSION = "1.0"
 
 # Tunable thresholds for derived metrics.
 IDLE_THRESHOLD_S = 2.0          # inter-event gaps longer than this count as idle
@@ -136,6 +143,27 @@ def base_prefix(events_file):
     elif stem == "events":
         stem = ""
     return f"{stem}_" if stem else ""
+
+
+def read_session_metadata(events_file):
+    """Load a session's ``metadata.json`` (or legacy ``<name>_metadata.json``).
+
+    Returns the parsed dict, or ``{}`` if no readable metadata sits beside the
+    events file. Shared by the viewer and the JSON export so both resolve session
+    metadata the same way.
+    """
+    events_file = Path(events_file)
+    parent = events_file.parent
+    candidates = [parent / "metadata.json"]
+    name = base_prefix(events_file).rstrip("_")
+    if name:
+        candidates.append(parent / f"{name}_metadata.json")
+    for meta_file in candidates:
+        try:
+            return json.loads(meta_file.read_text())
+        except (OSError, ValueError):
+            continue
+    return {}
 
 
 class InteractionAnalyzer:
@@ -743,6 +771,60 @@ class InteractionAnalyzer:
             writer.writerow(["metric", "value"])
             for key, value in self.stats.items():
                 writer.writerow([key, value])
+
+        return output_file
+
+    def build_summary_export(self, metadata=None):
+        """Assemble the structured, self-describing summary for ``summary.json``.
+
+        Unlike ``summary.csv`` (every value stringified, no context), this keeps
+        native JSON types and carries the session's provenance and a schema
+        version, so a downstream reader (pandas/R) can interpret the numbers and
+        know whether two sessions are comparable. ``metadata`` defaults to the
+        session's ``metadata.json``; pass a dict to override.
+        """
+        if not self.stats:
+            self.calculate_statistics()
+        if metadata is None:
+            metadata = read_session_metadata(self.events_file)
+
+        session = {
+            "name": metadata.get("session_name") or self.events_file.parent.name,
+            "privacy_mode": metadata.get("privacy_mode"),
+            "synthetic": metadata.get("synthetic", False),
+            "duration_seconds": self.stats.get("session_duration_seconds"),
+            "provenance": metadata.get("provenance"),
+            "capture_region": metadata.get("capture_region"),
+        }
+        return {
+            "schema": "interlog/summary",
+            "schema_version": SUMMARY_SCHEMA_VERSION,
+            "tool_version": __version__,
+            "session": session,
+            "metrics": dict(self.stats),
+            "metrics_notes": {
+                "comparability": (
+                    "Pixel-based metrics (suffix _px) scale with "
+                    "session.capture_region.dpi_scale; compare them only within one "
+                    "capture environment. Dimensionless and time-based metrics are "
+                    "cross-machine comparable. See docs/METRICS.md."
+                ),
+                "nulls": (
+                    "null means a metric was undefined for this session (e.g. no "
+                    "qualifying click-to-click movement, or privacy mode)."
+                ),
+            },
+        }
+
+    def save_summary_json(self, output_file=None, metadata=None):
+        """Write the structured summary (see ``build_summary_export``) as JSON."""
+        if output_file is None:
+            output_file = self.events_file.parent / f"{base_prefix(self.events_file)}summary.json"
+        else:
+            output_file = Path(output_file)
+
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(self.build_summary_export(metadata), f, indent=2)
 
         return output_file
 

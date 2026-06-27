@@ -155,7 +155,9 @@ Examples:
         help="Time bucket size in seconds for intensity analysis (default: 5.0).",
     )
     p_analyze.add_argument(
-        "--json", action="store_true", help="Also output summary as JSON."
+        "--json", action="store_true",
+        help="Also write summary.json — a structured export with schema version, "
+             "session provenance, and native-typed metrics (for pandas/R).",
     )
     p_analyze.add_argument(
         "--no-text", action="store_true",
@@ -498,9 +500,8 @@ def _cmd_analyze(args):
 
         json_path = None
         if args.json:
-            json_path = summary_path.parent / f"{summary_path.stem}.json"
-            with open(json_path, "w") as f:
-                json.dump(analyzer.stats, f, indent=2)
+            json_file = summary_path.parent / f"{summary_path.stem}.json"
+            json_path = analyzer.save_summary_json(json_file)
 
     console.rule("[dim]Output files[/dim]", style="dim")
     console.print(f"  [dim]Summary    [/dim]{summary_path}")

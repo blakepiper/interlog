@@ -9,8 +9,11 @@ import base64
 from pathlib import Path
 from string import Template
 
-from interlog.analyzer import LONG_PAUSE_THRESHOLD_S, InteractionAnalyzer
-from interlog.viewer import _read_metadata
+from interlog.analyzer import (
+    LONG_PAUSE_THRESHOLD_S,
+    InteractionAnalyzer,
+    read_session_metadata,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +299,7 @@ def build_report(session_path, output=None, bucket_size=5.0):
     analyzer.calculate_statistics()
     s = analyzer.stats
 
-    meta = _read_metadata(events_path)
+    meta = read_session_metadata(events_path)
     session_name = meta.get("session_name") or session_dir.name
     start_date = (meta.get("start_time") or "")[:10]
 

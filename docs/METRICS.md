@@ -182,3 +182,24 @@ The residual alignment error is physical, not arithmetic:
   control to absorb this residual.
 
 Record at a higher `--fps` to tighten the quantization floor.
+
+## Machine-readable export (`summary.json`)
+
+`interlog analyze --json` writes a structured, self-describing JSON document
+(`save_summary_json` in [`analyzer.py`](../src/interlog/analyzer.py)) alongside
+the CSV. It is the format to use for downstream analysis (pandas/R), because it
+preserves native types and carries the context needed to interpret the numbers.
+
+| Field | Meaning |
+|-------|---------|
+| `schema` / `schema_version` | Identifies the document shape (`interlog/summary`) and its version. Bumped on breaking shape changes so readers can adapt. |
+| `tool_version` | Version of InterLog that produced the export. |
+| `session.name` / `privacy_mode` / `synthetic` | Session identity; `synthetic` is `true` for `interlog demo` data. |
+| `session.duration_seconds` | Session length. |
+| `session.provenance` | Recording environment: `interlog_version` (metric definitions can change between releases), `system`, `python_version`, `platform`. |
+| `session.capture_region` | `width`/`height`/`dpi_scale` of the capture, when a screen recording was made. `dpi_scale` is what tells you whether pixel metrics are comparable to another session. |
+| `metrics` | The full metric set, with native JSON types (numbers and `null`, not stringified as in the CSV). |
+| `metrics_notes` | Inline reminders about comparability and the meaning of `null`. |
+
+`null` in `metrics` means a metric was undefined for that session (e.g. no
+qualifying click-to-click movement, or privacy mode) — distinct from `0`.

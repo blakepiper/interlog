@@ -375,6 +375,33 @@ machine — see `dpi_scale` in `metadata.json`.
 > units, comparability, literature reference, and limitations — plus the
 > event↔video sync model and its error budget.
 
+### `summary.json` (with `--json`)
+
+`interlog analyze --json` additionally writes a structured, self-describing
+export — the right format for pulling results into pandas/R:
+
+```json
+{
+  "schema": "interlog/summary",
+  "schema_version": "1.0",
+  "tool_version": "0.1.0",
+  "session": {
+    "name": "p01",
+    "privacy_mode": false,
+    "synthetic": false,
+    "duration_seconds": 127.45,
+    "provenance": { "interlog_version": "0.1.0", "system": "Darwin", "python_version": "3.12.1", "platform": "..." },
+    "capture_region": { "width": 1920, "height": 1080, "dpi_scale": 2.0 }
+  },
+  "metrics": { "total_clicks": 45, "mean_path_efficiency": 0.74, "movement_error_px": 12.3, "...": "..." },
+  "metrics_notes": { "comparability": "...", "nulls": "..." }
+}
+```
+
+Unlike the CSV (every value stringified, no context), it preserves native JSON
+types and carries the session's **provenance** and a **schema version**, so a
+reader can interpret the numbers and tell whether two sessions are comparable.
+
 ### `intensity.csv`
 
 Time-bucketed interaction counts — great for finding "hot spots" in long videos:

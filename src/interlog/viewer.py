@@ -11,7 +11,7 @@ import json
 import webbrowser
 from pathlib import Path
 
-from interlog.analyzer import InteractionAnalyzer, base_prefix
+from interlog.analyzer import InteractionAnalyzer, base_prefix, read_session_metadata
 
 _TEMPLATE = Path(__file__).parent / "viewer_template.html"
 _PLACEHOLDER = "__INTERLOG_DATA__"
@@ -19,21 +19,6 @@ _PLACEHOLDER = "__INTERLOG_DATA__"
 # Interaction events worth marking on the timeline (mouse moves are excluded -
 # they are high-volume and low-signal).
 _MARKER_TYPES = {"mouse_down", "scroll", "key_press", "drag"}
-
-
-def _read_metadata(events_file):
-    """Load the session's metadata.json (or legacy <name>_metadata.json), or {}."""
-    parent = events_file.parent
-    candidates = [parent / "metadata.json"]
-    name = base_prefix(events_file).rstrip("_")
-    if name:
-        candidates.append(parent / f"{name}_metadata.json")
-    for meta_file in candidates:
-        try:
-            return json.loads(meta_file.read_text())
-        except (OSError, ValueError):
-            continue
-    return {}
 
 
 def build_viewer(events_file, output=None, bucket_size=2.0, open_browser=True, video_src=None):
@@ -72,7 +57,7 @@ def build_viewer(events_file, output=None, bucket_size=2.0, open_browser=True, v
     ]
 
     session_label = base_prefix(events_file).rstrip("_") or events_file.parent.name
-    meta = _read_metadata(events_file)
+    meta = read_session_metadata(events_file)
 
     try:
         offset = float(meta.get("video_start_offset", 0.0))
