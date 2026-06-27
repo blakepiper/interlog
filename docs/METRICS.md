@@ -85,6 +85,55 @@ skipped (jitter dominates). Segments with no sampled intervening movement are
 skipped. The only residual assumption is that the native sampling rate is ≥ 30 Hz
 (true of essentially all mice). Returns `null` when nothing qualifies.
 
+### Movement accuracy measures (MacKenzie CHI 2001)
+
+The same click→click movements feed the rest of the accuracy-measure family from
+MacKenzie, Kauppinen & Silfverberg. For each movement the straight line from the
+start click to the end click is the **task axis**; the pointer path is resampled
+to the fixed `EFFICIENCY_RESAMPLE_HZ` (so the *counts* below don't inflate with
+the native sampling rate — verified by
+`test_accuracy_counts_are_sampling_rate_invariant`), then each point is split
+into distance *along* the axis and signed perpendicular distance *from* it. Each
+metric is the mean over all qualifying movements.
+
+| Metric | Symbol | Definition | Comparability |
+|--------|--------|------------|---------------|
+| `movement_offset_px` | MO | Mean **signed** perpendicular deviation — a consistent bias to one side of the ideal line. | Pixel (within environment). |
+| `movement_error_px` | ME | Mean **absolute** perpendicular deviation. | Pixel (within environment). |
+| `movement_variability_px` | MV | SD of perpendicular deviation. | Pixel (within environment). |
+| `task_axis_crossings` | TAC | Times the path crosses from one side of the axis to the other. | Dimensionless count. |
+| `movement_direction_changes` | MDC | Reversals **along** the axis (backtracking toward the start). | Dimensionless count. |
+| `orthogonal_direction_changes` | ODC | Reversals **across** the axis (side-to-side correction). | Dimensionless count. |
+
+A clean, direct movement has MO/ME/MV ≈ 0 and all three counts at 0; overshoot
+and corrective submovements raise MDC/ODC (cf. the optimized-submovement model,
+Meyer et al. 1988). All return `null` when no movement qualifies.
+
+**Omitted: target re-entries (TRE).** The seventh measure in the paper requires a
+defined target *width*, which free-form interaction logs do not carry — the same
+reason InterLog does not report Fitts' law throughput. It is left out rather than
+faked.
+
+## Coordination and input rhythm
+
+| Metric | Definition | Notes |
+|--------|------------|-------|
+| `modality_switches`, `modality_switches_per_minute` | Transitions between mouse (click/scroll/drag) and keyboard (key press) actions. | The KLM "homing" operator (Card, Moran & Newell 1980). Mouse moves and releases are ignored. |
+| `scroll_reversals` | Times the scroll direction flips (sign change of `dy`). | A searching / re-reading signal. |
+| `pre_click_dwell_seconds` | Mean time the pointer lingered within `PRE_CLICK_RADIUS_PX` (8 px) of a click before committing, capped at `PRE_CLICK_MAX_S` (2 s). | A descriptive settling / hesitation signal. `null` when no click had a sampled approach. |
+| `interkey_interval_sd_seconds`, `interkey_interval_cv` | SD and coefficient of variation (SD ÷ mean) of inter-key intervals. | Typing rhythm / planning pauses. CV is dimensionless and **cross-person comparable**; both survive privacy mode (timing only). |
+
+## Spatial spread of clicks
+
+A scalar companion to the heatmap — *where* on screen interaction happened.
+
+| Metric | Definition | Comparability |
+|--------|------------|---------------|
+| `click_spread_px` | RMS distance of clicks from their centroid. | Pixel (within environment). |
+| `click_bbox_width_px`, `click_bbox_height_px` | Bounding-box extent of clicks. | Pixel (within environment). |
+
+All return `null` with fewer than two clicks.
+
 ## Keyboard
 
 | Metric | Definition | Privacy mode |

@@ -316,9 +316,12 @@ Key statistics about the session:
 | … | … |
 
 Covers: **event counts & rates**, **pointer** (distance, speed, path efficiency,
-idle/active, time-to-first), **timing** (longest/median pause, long pauses),
-**click signals** (rage-click bursts, double clicks), and **keyboard dynamics**
-(typing speed, inter-key interval, correction rate — omitted in privacy mode).
+idle/active, time-to-first), **movement accuracy** (MacKenzie CHI 2001 — movement
+error/variability/offset and direction-change counts), **timing** (longest/median
+pause, long pauses), **click signals** (rage-click bursts, double clicks),
+**coordination** (mouse↔keyboard switches, scroll reversals, pre-click dwell),
+**spatial spread** of clicks, and **keyboard dynamics** (typing speed, inter-key
+interval and rhythm, correction rate — identity-based ones omitted in privacy mode).
 
 These are descriptive measures; InterLog deliberately does **not** fold them into
 a single "struggle"/"frustration" index. **Path efficiency is comparable across

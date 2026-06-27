@@ -159,6 +159,31 @@ _REPORT_TEMPLATE = Template("""\
 
 <section class="section">
   <div class="section-title">
+    Movement &amp; Coordination
+    <span class="note">accuracy (MacKenzie CHI 2001) &middot; pixel measures are per-environment</span>
+  </div>
+  <div class="metrics">
+    <div class="card">
+      <div class="label">Movement error</div>
+      <div class="value">$movement_error<span class="unit">px</span></div>
+    </div>
+    <div class="card">
+      <div class="label">Modality switches</div>
+      <div class="value">$modality_switches<span class="unit">/min</span></div>
+    </div>
+    <div class="card">
+      <div class="label">Pre-click dwell</div>
+      <div class="value">$pre_click_dwell<span class="unit">s</span></div>
+    </div>
+    <div class="card">
+      <div class="label">Click spread</div>
+      <div class="value">$click_spread<span class="unit">px</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-title">
     Activity Timeline
     <span class="note">${bucket_size}s buckets &middot; red = rage clicks</span>
   </div>
@@ -308,6 +333,13 @@ def build_report(session_path, output=None, bucket_size=5.0):
     eff = s.get("mean_path_efficiency")
     path_efficiency = f"{eff:.2f}" if eff is not None else "n/a"
 
+    me = s.get("movement_error_px")
+    movement_error = f"{me:.1f}" if me is not None else "n/a"
+    dwell = s.get("pre_click_dwell_seconds")
+    pre_click_dwell = f"{dwell:.2f}" if dwell is not None else "n/a"
+    spread = s.get("click_spread_px")
+    click_spread = f"{spread:,.0f}" if spread is not None else "n/a"
+
     dur_fmt = s["session_duration_formatted"]
 
     html = _REPORT_TEMPLATE.substitute(
@@ -327,6 +359,10 @@ def build_report(session_path, output=None, bucket_size=5.0):
         long_pauses=str(s["long_pauses"]),
         long_pause_threshold=int(LONG_PAUSE_THRESHOLD_S),
         path_efficiency=path_efficiency,
+        movement_error=movement_error,
+        modality_switches=f"{s['modality_switches_per_minute']:.1f}",
+        pre_click_dwell=pre_click_dwell,
+        click_spread=click_spread,
         bucket_size=int(bucket_size) if bucket_size == int(bucket_size) else bucket_size,
         sparkline_svg=sparkline_svg,
         heatmap_block=heatmap_block,

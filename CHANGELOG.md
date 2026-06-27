@@ -7,6 +7,19 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Richer movement & input metrics** (all in `analyze`/`summary.csv`, documented
+  in `docs/METRICS.md`):
+  - MacKenzie CHI 2001 accuracy measures on click→click movements — movement
+    offset (MO), error (ME), variability (MV), task-axis crossings (TAC), and
+    direction changes along/across the axis (MDC/ODC). Computed on the fixed-rate
+    resampled trajectory so the counts are sampling-rate invariant. (TRE is
+    omitted — it needs a defined target width, like Fitts' throughput.)
+  - `modality_switches` (+ per minute) — mouse↔keyboard transitions (KLM homing).
+  - `scroll_reversals`, `pre_click_dwell_seconds`.
+  - `interkey_interval_sd_seconds` and `interkey_interval_cv` (typing rhythm;
+    survive privacy mode).
+  - `click_spread_px` and click bounding-box extents (spatial dispersion).
+  - Selected metrics surfaced in the terminal summary (`print_summary`).
 - `interlog.sync` — a single, tested source of truth for the event↔video
   alignment formula (`offset = mono_start − video_first_frame_time`,
   `video_time = event_time + offset`), with a documented frame-quantization

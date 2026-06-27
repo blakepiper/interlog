@@ -233,6 +233,184 @@ def test_privacy_mode_nulls_keyboard_identity_metrics(tmp_path):
     assert s["backspaces"] is None
     assert s["correction_rate"] is None
     assert s["mean_interkey_interval_seconds"] == pytest.approx(0.3, abs=0.01)
+    # timing-only variability survives privacy mode (no key identity needed)
+    assert s["interkey_interval_cv"] is None  # too few intervals here
+
+
+# --- new movement / input metrics ------------------------------------------
+
+def _click_move_stream(moves):
+    """Two clicks 300 px apart on the x-axis with the given intervening moves.
+
+    ``moves`` is a list of (t, x, y). Returns rows ready for _write_events.
+    """
+    rows = [{"timestamp": 0.0, "event_type": "mouse_down", "x": 0, "y": 0}]
+    rows += [{"timestamp": t, "event_type": "mouse_move", "x": x, "y": y} for t, x, y in moves]
+    rows += [{"timestamp": 1.0, "event_type": "mouse_down", "x": 300, "y": 0}]
+    return rows
+
+
+def test_accuracy_measures_straight_move_is_clean(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, _click_move_stream([
+        (0.25, 75, 0), (0.5, 150, 0), (0.75, 225, 0),  # dead straight on the axis
+    ]))
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    s = a.calculate_statistics()
+
+    assert s["movement_error_px"] == pytest.approx(0.0, abs=0.01)
+    assert s["movement_variability_px"] == pytest.approx(0.0, abs=0.01)
+    assert s["movement_offset_px"] == pytest.approx(0.0, abs=0.01)
+    assert s["task_axis_crossings"] == 0
+    assert s["movement_direction_changes"] == 0
+    assert s["orthogonal_direction_changes"] == 0
+
+
+def test_accuracy_measures_one_sided_bump(tmp_path):
+    # Path bows to one side of the axis and returns: biased + one orthogonal turn.
+    events = tmp_path / "events.csv"
+    _write_events(events, _click_move_stream([
+        (0.25, 75, 40), (0.5, 150, 60), (0.75, 225, 40),
+    ]))
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    s = a.calculate_statistics()
+
+    assert s["movement_offset_px"] > 0       # consistently one side of the axis
+    assert s["movement_error_px"] > 0
+    assert s["task_axis_crossings"] == 0     # never reaches the other side
+    assert s["orthogonal_direction_changes"] >= 1  # out then back
+
+
+def test_accuracy_measures_axis_crossing_zigzag(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, _click_move_stream([
+        (0.25, 75, 40), (0.5, 150, -40), (0.75, 225, 40),  # crosses the axis twice
+    ]))
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    s = a.calculate_statistics()
+    assert s["task_axis_crossings"] >= 2
+
+
+def test_accuracy_measures_backtrack_along_axis(tmp_path):
+    # Overshoot forward, retreat, finish: reversals *along* the axis.
+    events = tmp_path / "events.csv"
+    _write_events(events, _click_move_stream([
+        (0.3, 200, 0), (0.6, 100, 0), (0.85, 260, 0),
+    ]))
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    s = a.calculate_statistics()
+    assert s["movement_direction_changes"] >= 1
+    assert s["movement_error_px"] == pytest.approx(0.0, abs=0.01)  # stays on the axis
+
+
+def test_accuracy_measures_none_without_segment(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, [{"timestamp": 0.0, "event_type": "mouse_down", "x": 0, "y": 0}])
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    s = a.calculate_statistics()
+    assert s["movement_error_px"] is None
+    assert s["task_axis_crossings"] is None
+
+
+def test_modality_switches_counts_mouse_keyboard_transitions(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": 0.0, "event_type": "mouse_down", "x": 1, "y": 1},
+        {"timestamp": 0.1, "event_type": "mouse_move", "x": 2, "y": 2},  # ignored
+        {"timestamp": 0.2, "event_type": "key_press", "key": "a"},       # switch 1
+        {"timestamp": 0.3, "event_type": "key_press", "key": "b"},       # same modality
+        {"timestamp": 0.4, "event_type": "scroll", "x": 2, "y": 2, "dy": -1},  # switch 2
+        {"timestamp": 0.5, "event_type": "key_press", "key": "c"},       # switch 3
+    ])
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    s = a.calculate_statistics()
+    assert s["modality_switches"] == 3
+
+
+def test_scroll_reversals_counts_direction_flips(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": 0.0, "event_type": "scroll", "x": 0, "y": 0, "dy": -1},
+        {"timestamp": 0.1, "event_type": "scroll", "x": 0, "y": 0, "dy": -1},
+        {"timestamp": 0.2, "event_type": "scroll", "x": 0, "y": 0, "dy": 1},   # flip 1
+        {"timestamp": 0.3, "event_type": "scroll", "x": 0, "y": 0, "dy": -1},  # flip 2
+    ])
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    assert a.calculate_statistics()["scroll_reversals"] == 2
+
+
+def test_pre_click_dwell_measures_settling_time(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": 0.0, "event_type": "mouse_move", "x": 10, "y": 10},   # far from target
+        {"timestamp": 0.5, "event_type": "mouse_move", "x": 100, "y": 100},  # arrives at target
+        {"timestamp": 0.7, "event_type": "mouse_move", "x": 101, "y": 101},  # lingers within radius
+        {"timestamp": 1.0, "event_type": "mouse_down", "x": 100, "y": 100},
+    ])
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    # dwell = click_t (1.0) - first arrival within 8 px (0.5)
+    assert a.calculate_statistics()["pre_click_dwell_seconds"] == pytest.approx(0.5, abs=0.01)
+
+
+def test_click_dispersion_spread_and_bbox(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": t, "event_type": "mouse_down", "x": x, "y": y}
+        for t, (x, y) in enumerate([(0, 0), (100, 0), (0, 100), (100, 100)])
+    ])
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    s = a.calculate_statistics()
+    # centroid (50,50); every click is sqrt(50^2+50^2) ~= 70.71 px away
+    assert s["click_spread_px"] == pytest.approx(70.7, abs=0.2)
+    assert s["click_bbox_width_px"] == 100
+    assert s["click_bbox_height_px"] == 100
+
+
+def test_interkey_variability(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": t, "event_type": "key_press", "key": k}
+        for t, k in [(0.0, "a"), (1.0, "b"), (2.0, "c"), (4.0, "d")]  # intervals 1,1,2
+    ])
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    s = a.calculate_statistics()
+    assert s["mean_interkey_interval_seconds"] == pytest.approx(4 / 3, abs=0.001)
+    assert s["interkey_interval_sd_seconds"] == pytest.approx(0.577, abs=0.01)
+    assert s["interkey_interval_cv"] == pytest.approx(0.433, abs=0.01)
+
+
+def test_accuracy_counts_are_sampling_rate_invariant(tmp_path):
+    """The direction-change counts must not inflate with mouse sampling rate.
+
+    The same one-sided-bump motion sampled densely vs sparsely should yield the
+    same orthogonal-direction-change count, because measures are computed on a
+    fixed-rate resampled trajectory.
+    """
+    def odc_for(n):
+        # n intervening samples tracing the same smooth bump y = 60*sin(pi*x/300)
+        moves = []
+        for i in range(1, n + 1):
+            frac = i / (n + 1)
+            x = int(300 * frac)
+            y = int(60 * math.sin(math.pi * frac))
+            moves.append((frac, x, y))
+        events = tmp_path / f"events_{n}.csv"
+        _write_events(events, _click_move_stream(moves))
+        a = InteractionAnalyzer(events)
+        a.load_events()
+        return a.calculate_statistics()["orthogonal_direction_changes"]
+
+    assert odc_for(6) == odc_for(40)
 
 
 def test_calculate_intensity_rejects_nonpositive_bucket(tmp_path):

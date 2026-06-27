@@ -39,23 +39,27 @@ MIN_EFFICIENCY_SEGMENT_PX = 40  # ignore click-to-click moves shorter than this 
 # rate, so the result is comparable across machines whose native mouse-sampling
 # rate is at least this (true of essentially all mice). See _resampled_length.
 EFFICIENCY_RESAMPLE_HZ = 30.0
+PRE_CLICK_RADIUS_PX = 8         # "near the target": dwell is measured within this radius of a click
+PRE_CLICK_MAX_S = 2.0           # cap pre-click dwell so a long idle isn't counted as hesitation
 
 
-def _resampled_length(points, dt):
-    """Length of a time-stamped polyline resampled at a fixed time step ``dt``.
+def _resample_points(points, dt):
+    """Resample a time-stamped polyline onto a fixed time step ``dt``.
 
     ``points`` is a list of ``(t, x, y)`` in non-decreasing time order. Positions
     are linearly interpolated in time onto an evenly spaced grid (t0, t0+dt, …,
-    t1) and the length is summed over that grid. Because the grid spacing is
-    fixed rather than tied to the capture's native sampling rate, a fast mouse
-    (many samples) and a slow one (few samples) recording the *same* motion yield
-    the same length — removing the rate dependence that otherwise biases sparse
-    captures toward shorter paths (and higher apparent efficiency).
+    t1) and returned as a list of ``(x, y)``. Because the grid spacing is fixed
+    rather than tied to the capture's native sampling rate, a fast mouse (many
+    samples) and a slow one (few samples) recording the *same* motion yield the
+    same resampled trajectory — removing the rate dependence that otherwise
+    biases sparse captures. Every measure derived from the pointer path (length,
+    deviations, direction-change counts) is built on this so it is comparable
+    across machines. Returns [] when the path spans no time.
     """
     t0, t1 = points[0][0], points[-1][0]
     span = t1 - t0
     if span <= 0:
-        return 0.0
+        return []
 
     # Evenly spaced target times from t0 up to (and including) t1.
     times = []
@@ -68,8 +72,7 @@ def _resampled_length(points, dt):
         k += 1
     times.append(t1)
 
-    total = 0.0
-    prev = None
+    out = []
     j = 0  # points[j], points[j+1] bracket the current target time
     for t in times:
         while j < len(points) - 2 and points[j + 1][0] <= t:
@@ -79,12 +82,46 @@ def _resampled_length(points, dt):
         seg = tb - ta
         f = (t - ta) / seg if seg > 0 else 0.0
         f = 0.0 if f < 0 else 1.0 if f > 1 else f
-        x = xa + (xb - xa) * f
-        y = ya + (yb - ya) * f
-        if prev is not None:
-            total += math.hypot(x - prev[0], y - prev[1])
-        prev = (x, y)
-    return total
+        out.append((xa + (xb - xa) * f, ya + (yb - ya) * f))
+    return out
+
+
+def _resampled_length(points, dt):
+    """Length of a time-stamped polyline resampled at a fixed time step ``dt``.
+
+    Thin wrapper over :func:`_resample_points`: sums segment lengths along the
+    fixed-rate trajectory, so the result does not depend on the native sampling
+    rate (see _resample_points for why).
+    """
+    resampled = _resample_points(points, dt)
+    return sum(
+        math.hypot(b[0] - a[0], b[1] - a[1])
+        for a, b in zip(resampled, resampled[1:])
+    )
+
+
+def _diffs(xs):
+    """Consecutive first differences of a sequence."""
+    return [b - a for a, b in zip(xs, xs[1:])]
+
+
+def _sign_changes(xs):
+    """Number of sign changes in a sequence, ignoring zeros.
+
+    A run of zeros does not count as a change; the sign is compared against the
+    most recent non-zero value, so a path that touches the axis and continues in
+    the same direction is not counted as a crossing.
+    """
+    count = 0
+    prev = 0
+    for x in xs:
+        s = (x > 0) - (x < 0)  # -1, 0, or 1
+        if s == 0:
+            continue
+        if prev != 0 and s != prev:
+            count += 1
+        prev = s
+    return count
 
 
 def base_prefix(events_file):
@@ -219,6 +256,14 @@ class InteractionAnalyzer:
         path_efficiency = self._movement_efficiency()
         kbd = self._keyboard_metrics(duration_minutes)
 
+        # Movement accuracy (MacKenzie CHI2001), coordination, and spatial spread.
+        accuracy = self._accuracy_measures() or {}
+        dispersion = self._click_dispersion() or {}
+        modality_switches = self._modality_switches()
+        modality_switches_per_minute = (
+            modality_switches / duration_minutes if duration_minutes > 0 else 0
+        )
+
         self.stats = {
             "session_duration_seconds": duration,
             "session_duration_formatted": str(timedelta(seconds=int(duration))),
@@ -246,10 +291,28 @@ class InteractionAnalyzer:
             "long_pauses": long_pauses,
             "time_to_first_interaction_seconds": round(ttfi, 2),
             "double_clicks": double_clicks,
+            "scroll_reversals": self._scroll_reversals(),
+            "pre_click_dwell_seconds": self._pre_click_dwell(),
+            "modality_switches": modality_switches,
+            "modality_switches_per_minute": round(modality_switches_per_minute, 2),
             "mean_interkey_interval_seconds": kbd["mean_interkey_interval_seconds"],
+            "interkey_interval_sd_seconds": kbd["interkey_interval_sd_seconds"],
+            "interkey_interval_cv": kbd["interkey_interval_cv"],
             "typing_chars_per_minute": kbd["typing_chars_per_minute"],
             "backspaces": kbd["backspaces"],
             "correction_rate": kbd["correction_rate"],
+            # Movement accuracy (MacKenzie CHI2001); None-keys absent when no
+            # qualifying click-to-click movement existed.
+            "movement_offset_px": accuracy.get("movement_offset_px"),
+            "movement_error_px": accuracy.get("movement_error_px"),
+            "movement_variability_px": accuracy.get("movement_variability_px"),
+            "task_axis_crossings": accuracy.get("task_axis_crossings"),
+            "movement_direction_changes": accuracy.get("movement_direction_changes"),
+            "orthogonal_direction_changes": accuracy.get("orthogonal_direction_changes"),
+            # Spatial spread of clicks.
+            "click_spread_px": dispersion.get("click_spread_px"),
+            "click_bbox_width_px": dispersion.get("click_bbox_width_px"),
+            "click_bbox_height_px": dispersion.get("click_bbox_height_px"),
         }
 
         return self.stats
@@ -272,6 +335,49 @@ class InteractionAnalyzer:
                 i += 1
         return count
 
+    def _click_segments(self):
+        """Yield qualifying click→click pointer movements.
+
+        Each yielded item is ``(start, end, path)`` where ``start``/``end`` are
+        the two clicks as ``(t, x, y)`` and ``path`` is the pointer trajectory
+        between them (the two clicks plus every intervening ``mouse_move``), in
+        time order. Segments shorter than ``MIN_EFFICIENCY_SEGMENT_PX`` (jitter
+        dominates) or with no sampled intervening movement are skipped.
+
+        This is the shared primitive for every pointer-path measure (efficiency
+        and the MacKenzie accuracy measures), so they all score the same set of
+        movements.
+        """
+        clicks = [
+            (e["timestamp"], e["x"], e["y"])
+            for e in self.events
+            if e["event_type"] == "mouse_down" and isinstance(e.get("x"), int)
+        ]
+        moves = [
+            (e["timestamp"], e["x"], e["y"])
+            for e in self.events
+            if e["event_type"] == "mouse_move" and isinstance(e.get("x"), int)
+        ]
+        if len(clicks) < 2 or not moves:
+            return
+
+        mi = 0  # advances monotonically through moves as click segments progress
+        for start, end in zip(clicks, clicks[1:]):
+            (t0, x0, y0), (t1, x1, y1) = start, end
+            if math.hypot(x1 - x0, y1 - y0) < MIN_EFFICIENCY_SEGMENT_PX:
+                continue
+            while mi < len(moves) and moves[mi][0] <= t0:
+                mi += 1
+            path = [(t0, x0, y0)]
+            k = mi
+            while k < len(moves) and moves[k][0] < t1:
+                path.append(moves[k])
+                k += 1
+            path.append((t1, x1, y1))
+            if len(path) < 3:
+                continue  # no intervening movement sampled; nothing to score
+            yield start, end, path
+
     def _movement_efficiency(self):
         """Mean pointer-path efficiency between consecutive clicks, in (0, 1].
 
@@ -290,36 +396,10 @@ class InteractionAnalyzer:
 
         Returns None when no segment is long enough to score.
         """
-        clicks = [
-            (e["timestamp"], e["x"], e["y"])
-            for e in self.events
-            if e["event_type"] == "mouse_down" and isinstance(e.get("x"), int)
-        ]
-        moves = [
-            (e["timestamp"], e["x"], e["y"])
-            for e in self.events
-            if e["event_type"] == "mouse_move" and isinstance(e.get("x"), int)
-        ]
-        if len(clicks) < 2 or not moves:
-            return None
-
         dt = 1.0 / EFFICIENCY_RESAMPLE_HZ
         ratios = []
-        mi = 0  # advances monotonically through moves as click segments progress
-        for (t0, x0, y0), (t1, x1, y1) in zip(clicks, clicks[1:]):
+        for (_, x0, y0), (_, x1, y1), path in self._click_segments():
             straight = math.hypot(x1 - x0, y1 - y0)
-            if straight < MIN_EFFICIENCY_SEGMENT_PX:
-                continue
-            while mi < len(moves) and moves[mi][0] <= t0:
-                mi += 1
-            path = [(t0, x0, y0)]
-            k = mi
-            while k < len(moves) and moves[k][0] < t1:
-                path.append(moves[k])
-                k += 1
-            path.append((t1, x1, y1))
-            if len(path) < 3:
-                continue  # no intervening movement sampled; nothing to score
             actual = _resampled_length(path, dt)
             if actual > 0:
                 ratios.append(min(1.0, straight / actual))
@@ -328,18 +408,105 @@ class InteractionAnalyzer:
             return None
         return round(sum(ratios) / len(ratios), 3)
 
+    def _accuracy_measures(self):
+        """MacKenzie/Kauppinen/Silfverberg (CHI 2001) accuracy measures.
+
+        For each click→click movement the straight line from the start click to
+        the end click is the *task axis*. The pointer path is resampled to a
+        fixed time base (so the counts below do not inflate with the native mouse
+        sampling rate), then each resampled point is decomposed into distance
+        *along* the axis and signed perpendicular distance *from* it. Reported as
+        the mean over all qualifying movements:
+
+        * ``movement_offset_px`` (MO) — mean signed perpendicular deviation (a
+          consistent bias to one side of the ideal line).
+        * ``movement_error_px`` (ME) — mean absolute perpendicular deviation.
+        * ``movement_variability_px`` (MV) — SD of perpendicular deviation.
+        * ``task_axis_crossings`` (TAC) — times the path crosses the axis.
+        * ``movement_direction_changes`` (MDC) — reversals *along* the axis
+          (backtracking toward the start).
+        * ``orthogonal_direction_changes`` (ODC) — reversals *across* the axis.
+
+        MO/ME/MV are perpendicular distances in pixels, so they scale with the
+        device-pixel ratio — compare them only within one capture environment
+        (see ``capture_region.dpi_scale``). The three counts are dimensionless.
+        Target re-entries (TRE) from the same paper are intentionally omitted:
+        they require a defined target width, which free-form logs do not carry.
+
+        Returns None when no segment qualifies.
+        """
+        dt = 1.0 / EFFICIENCY_RESAMPLE_HZ
+        mo, me, mv = [], [], []
+        tac, mdc, odc = [], [], []
+
+        for (_, x0, y0), (_, x1, y1), path in self._click_segments():
+            pts = _resample_points(path, dt)
+            if len(pts) < 3:
+                continue
+            # Unit vector along the task axis (start click -> end click).
+            ax, ay = x1 - x0, y1 - y0
+            axis = math.hypot(ax, ay)
+            if axis == 0:
+                continue
+            ux, uy = ax / axis, ay / axis
+
+            along, perp = [], []
+            for px, py in pts:
+                vx, vy = px - x0, py - y0
+                along.append(vx * ux + vy * uy)      # projection onto the axis
+                perp.append(vx * (-uy) + vy * ux)    # signed distance from axis
+
+            mo.append(sum(perp) / len(perp))
+            me.append(sum(abs(p) for p in perp) / len(perp))
+            mv.append(statistics.pstdev(perp) if len(perp) > 1 else 0.0)
+            tac.append(_sign_changes(perp))                  # crossings of the axis
+            mdc.append(_sign_changes(_diffs(along)))         # reversals along the axis
+            odc.append(_sign_changes(_diffs(perp)))          # reversals across the axis
+
+        if not mo:
+            return None
+
+        def _mean(xs):
+            return sum(xs) / len(xs)
+
+        return {
+            "movement_offset_px": round(_mean(mo), 2),
+            "movement_error_px": round(_mean(me), 2),
+            "movement_variability_px": round(_mean(mv), 2),
+            "task_axis_crossings": round(_mean(tac), 2),
+            "movement_direction_changes": round(_mean(mdc), 2),
+            "orthogonal_direction_changes": round(_mean(odc), 2),
+        }
+
     def _keyboard_metrics(self, duration_minutes):
         """Inter-key timing and (when not in privacy mode) typing/correction rates."""
         presses = [e for e in self.events if e["event_type"] == "key_press"]
         intervals = [b["timestamp"] - a["timestamp"] for a, b in zip(presses, presses[1:])]
         mean_interkey = statistics.mean(intervals) if intervals else 0
 
+        # Variability of inter-key timing (rhythm / planning pauses). The
+        # coefficient of variation (SD / mean) is dimensionless, so it is
+        # comparable across people and machines; it needs no key identity and so
+        # survives privacy mode. Reported as None when there are too few presses.
+        interkey_sd = statistics.stdev(intervals) if len(intervals) > 1 else None
+        interkey_cv = (
+            round(interkey_sd / mean_interkey, 3)
+            if interkey_sd is not None and mean_interkey > 0
+            else None
+        )
+
+        base = {
+            "mean_interkey_interval_seconds": round(mean_interkey, 3),
+            "interkey_interval_sd_seconds": round(interkey_sd, 3) if interkey_sd is not None else None,
+            "interkey_interval_cv": interkey_cv,
+        }
+
         # Key identities are unavailable in privacy mode, so char/correction
         # metrics are reported as None rather than guessed.
         redacted = any(e.get("key") == "[REDACTED]" for e in presses)
         if redacted or not presses:
             return {
-                "mean_interkey_interval_seconds": round(mean_interkey, 3),
+                **base,
                 "typing_chars_per_minute": None,
                 "backspaces": None,
                 "correction_rate": None,
@@ -351,10 +518,116 @@ class InteractionAnalyzer:
         char_keys = sum(1 for e in presses if len(str(e.get("key") or "")) == 1)
         cpm = char_keys / duration_minutes if duration_minutes > 0 else 0
         return {
-            "mean_interkey_interval_seconds": round(mean_interkey, 3),
+            **base,
             "typing_chars_per_minute": round(cpm, 2),
             "backspaces": backspaces,
             "correction_rate": round(backspaces / len(presses), 3),
+        }
+
+    def _modality_switches(self):
+        """Count transitions between mouse and keyboard activity (KLM "homing").
+
+        Each intentional action is classed as mouse (click, scroll, drag) or
+        keyboard (key press); a switch is a class change between consecutive
+        actions. Mouse moves and key/button releases are ignored — they are not
+        deliberate task actions. Grounded in the homing operator of the Keystroke
+        -Level Model (Card, Moran & Newell, 1980).
+        """
+        mouse = {"mouse_down", "scroll", "drag"}
+        seq = [
+            "m" if e["event_type"] in mouse else "k"
+            for e in self.events
+            if e["event_type"] in mouse or e["event_type"] == "key_press"
+        ]
+        return sum(1 for a, b in zip(seq, seq[1:]) if a != b)
+
+    def _scroll_reversals(self):
+        """Number of times the scroll direction flips (up→down or down→up).
+
+        A descriptive signal of searching or re-reading: a long document read
+        once scrolls one way; hunting for something reverses repeatedly. Computed
+        from the sign of scroll ``dy``; zero-delta scrolls are ignored.
+        """
+        dys = [
+            e.get("dy", 0) or 0
+            for e in self.events
+            if e["event_type"] == "scroll"
+        ]
+        return _sign_changes(dys)
+
+    def _pre_click_dwell(self):
+        """Mean dwell near the target just before clicking, in seconds.
+
+        For each click, scan its preceding ``mouse_move`` samples backward until
+        the pointer is more than ``PRE_CLICK_RADIUS_PX`` from the click point;
+        the dwell is the time from that arrival to the click, capped at
+        ``PRE_CLICK_MAX_S`` so a long idle before clicking is not counted as
+        hesitation. A descriptive uncertainty/settling signal — longer dwell
+        suggests more time spent homing in on or hesitating over the target.
+
+        Returns None when no click has a preceding sampled approach.
+        """
+        moves = [
+            (e["timestamp"], e["x"], e["y"])
+            for e in self.events
+            if e["event_type"] == "mouse_move" and isinstance(e.get("x"), int)
+        ]
+        clicks = [
+            (e["timestamp"], e["x"], e["y"])
+            for e in self.events
+            if e["event_type"] == "mouse_down" and isinstance(e.get("x"), int)
+        ]
+        if not moves or not clicks:
+            return None
+
+        dwells = []
+        mi = 0
+        for ct, cx, cy in clicks:
+            # Advance to the moves that precede this click.
+            while mi < len(moves) and moves[mi][0] <= ct:
+                mi += 1
+            arrival = None
+            # Walk backward through the approach while inside the radius.
+            for k in range(mi - 1, -1, -1):
+                mt, mx, my = moves[k]
+                if ct - mt > PRE_CLICK_MAX_S:
+                    break
+                if math.hypot(mx - cx, my - cy) <= PRE_CLICK_RADIUS_PX:
+                    arrival = mt
+                else:
+                    break
+            if arrival is not None:
+                dwells.append(ct - arrival)
+
+        if not dwells:
+            return None
+        return round(sum(dwells) / len(dwells), 3)
+
+    def _click_dispersion(self):
+        """Spatial spread of clicks: RMS distance from the centroid and bbox.
+
+        Summarizes *where* on screen interaction happened — a scalar companion to
+        the heatmap. ``click_spread_px`` is the root-mean-square distance of
+        clicks from their centroid; the bounding box gives the extent. All are
+        pixel measures, so compare them only within one capture environment (see
+        ``capture_region.dpi_scale``). Returns None with fewer than two clicks.
+        """
+        pts = [
+            (e["x"], e["y"])
+            for e in self.events
+            if e["event_type"] == "mouse_down" and isinstance(e.get("x"), int)
+        ]
+        if len(pts) < 2:
+            return None
+        cx = sum(p[0] for p in pts) / len(pts)
+        cy = sum(p[1] for p in pts) / len(pts)
+        spread = math.sqrt(sum((p[0] - cx) ** 2 + (p[1] - cy) ** 2 for p in pts) / len(pts))
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        return {
+            "click_spread_px": round(spread, 1),
+            "click_bbox_width_px": max(xs) - min(xs),
+            "click_bbox_height_px": max(ys) - min(ys),
         }
 
     def _detect_rage_clicks(self, clicks, time_window=1.0, distance_threshold=50):
@@ -565,6 +838,9 @@ class InteractionAnalyzer:
         eff = s.get("mean_path_efficiency")
         t_ptr.add_row("Path efficiency",
                       f"{eff:.2f}" if eff is not None else "[dim]n/a[/dim]")
+        me = s.get("movement_error_px")
+        t_ptr.add_row("Movement error",
+                      f"{me:.1f} px" if me is not None else "[dim]n/a[/dim]")
         t_ptr.add_row("Active / Idle",
                       f"{s['active_time_seconds']:.1f}s / {s['idle_time_seconds']:.1f}s")
         t_ptr.add_row("Time to First", f"{s['time_to_first_interaction_seconds']:.2f}s")
@@ -582,6 +858,9 @@ class InteractionAnalyzer:
             t_kbd.add_row("Corrections",
                           f"{s['backspaces']} ({s['correction_rate'] * 100:.1f}%)")
         t_kbd.add_row("Inter-key interval", f"{s['mean_interkey_interval_seconds']:.3f}s")
+        cv = s.get("interkey_interval_cv")
+        t_kbd.add_row("Inter-key rhythm (CV)",
+                      f"{cv:.2f}" if cv is not None else "[dim]n/a[/dim]")
 
         console.print(Columns([t_ptr, t_kbd], equal=False, expand=False, padding=(0, 2)))
         console.print()
@@ -609,6 +888,15 @@ class InteractionAnalyzer:
             f"  Longest pause  [white]{s['longest_pause_seconds']:.2f}s[/white]   "
             f"Median pause  [white]{s['median_pause_seconds']:.3f}s[/white]   "
             f"Scroll distance  [white]{s['total_scroll_distance']:,} px[/white]"
+        )
+
+        dwell = s.get("pre_click_dwell_seconds")
+        dwell_str = f"{dwell:.2f}s" if dwell is not None else "n/a"
+        console.print(
+            f"  Modality switches  [white]{s['modality_switches']}[/white] "
+            f"[dim]({s['modality_switches_per_minute']:.1f}/min)[/dim]   "
+            f"Scroll reversals  [white]{s['scroll_reversals']}[/white]   "
+            f"Pre-click dwell  [white]{dwell_str}[/white]"
         )
         console.print()
 
@@ -657,6 +945,8 @@ def batch_analyze(data_dir):
                 "double_clicks": s["double_clicks"],
                 "long_pauses": s["long_pauses"],
                 "mean_path_efficiency": s["mean_path_efficiency"],
+                "modality_switches_per_minute": s["modality_switches_per_minute"],
+                "interkey_interval_cv": s["interkey_interval_cv"],
             })
         except Exception:
             continue

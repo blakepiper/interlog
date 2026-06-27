@@ -563,6 +563,7 @@ def _cmd_analyze_batch(args):
         "session", "duration_seconds", "duration_formatted",
         "total_events", "total_clicks", "clicks_per_minute", "actions_per_minute",
         "rage_clicks", "double_clicks", "long_pauses", "mean_path_efficiency",
+        "modality_switches_per_minute", "interkey_interval_cv",
     ]
     with open(agg_path, "w", newline="", encoding="utf-8") as f:
         writer = _csv.DictWriter(f, fieldnames=fieldnames)
