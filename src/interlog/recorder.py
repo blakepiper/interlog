@@ -3,6 +3,7 @@
 import csv
 import json
 import platform
+import signal
 import time
 from datetime import datetime
 from pathlib import Path
@@ -17,9 +18,6 @@ EVENT_FIELDS = [
     "timestamp", "event_type", "x", "y", "button",
     "dx", "dy", "key", "start_x", "start_y", "end_x", "end_y",
 ]
-
-# How many buffered events trigger a flush to disk.
-FLUSH_THRESHOLD = 10
 
 
 def session_provenance():
@@ -67,6 +65,7 @@ class InteractionLogger:
         self.start_time = None       # wall clock (for metadata display only)
         self._mono_start = None      # monotonic clock (source of truth for timing)
         self.stop_event = Event()
+        self._stopped = False        # guards stop() against running twice
 
         # Output file paths
         self.events_file = self.session_dir / "events.csv"
@@ -101,7 +100,7 @@ class InteractionLogger:
             "start_time": datetime.now().isoformat(),
             "privacy_mode": self.privacy_mode,
             "session_dir": str(self.session_dir.absolute()),
-            "provenance": self._provenance(),
+            "provenance": session_provenance(),
         }
         if self.video_file is not None:
             metadata["video_file"] = Path(self.video_file).name
@@ -115,10 +114,6 @@ class InteractionLogger:
             if self.capture_region is not None:
                 metadata["capture_region"] = self.capture_region
         return metadata
-
-    def _provenance(self):
-        """Environment fingerprint recorded with every session (see module fn)."""
-        return session_provenance()
 
     def _get_timestamp(self):
         """Get relative timestamp in seconds since session start.
@@ -250,6 +245,13 @@ class InteractionLogger:
             writer = csv.DictWriter(f, fieldnames=EVENT_FIELDS)
             writer.writeheader()
 
+        # Treat SIGTERM (terminal closed, `kill`) like Ctrl+C so the session is
+        # finalized cleanly instead of leaving metadata without end_time/totals.
+        try:
+            signal.signal(signal.SIGTERM, lambda *_: self.stop_event.set())
+        except ValueError:
+            pass  # not the main thread; the finally below still runs stop()
+
         try:
             with Live("", refresh_per_second=2, console=console, transient=True) as live:
                 while not self.stop_event.is_set():
@@ -269,11 +271,16 @@ class InteractionLogger:
             self.stop()
 
     def stop(self):
-        """Stop capturing and save all events."""
+        """Stop capturing and save all events. Safe to call more than once."""
+        if self._stopped:
+            return
+        self._stopped = True
+
         from rich.console import Console
         console = Console(highlight=False)
 
         self.stop_event.set()
+        elapsed = self._get_timestamp()
 
         if self.mouse_listener:
             self.mouse_listener.stop()
@@ -296,15 +303,14 @@ class InteractionLogger:
             with open(self.metadata_file) as f:
                 metadata = json.load(f)
             metadata["end_time"] = datetime.now().isoformat()
-            metadata["duration_seconds"] = self._get_timestamp()
+            metadata["duration_seconds"] = elapsed
             metadata["total_events"] = self.total_events
             with open(self.metadata_file, "w") as f:
                 json.dump(metadata, f, indent=2)
         except Exception as e:
             console.print(f"  [yellow]![/yellow]  Could not update metadata: {e}")
 
-        dur = self._get_timestamp()
-        m, s = divmod(int(dur), 60)
+        m, s = divmod(int(elapsed), 60)
         session = str(self.session_dir)
 
         console.print()
@@ -329,13 +335,10 @@ class InteractionLogger:
         console.print()
 
     def _flush_events(self):
-        """Write accumulated events to CSV file.
+        """Append buffered events to the CSV.
 
-        Listener threads append to ``self.events`` concurrently, so we detach
-        the current buffer with a single atomic rebind before writing. Writing
-        the old list and clearing it separately would drop any event appended
-        in between; swapping first means those events simply land in the next
-        flush instead of being lost.
+        Listener threads append to ``self.events`` concurrently, so swap the
+        buffer out in one rebind; events arriving mid-flush land in the next one.
         """
         if not self.events:
             return

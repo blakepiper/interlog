@@ -23,7 +23,7 @@ def _parse_range(header, total):
     spec = header[6:]
     if spec.startswith("-"):
         n = int(spec)           # negative → suffix range
-        start, end = total + n, total - 1
+        start, end = max(0, total + n), total - 1   # suffix longer than file → whole file
     else:
         lo, _, hi = spec.partition("-")
         start = int(lo)

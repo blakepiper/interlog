@@ -24,7 +24,7 @@ dependencies = ["pynput>=1.7.6", "rich>=12.0", "jeepney>=0.8; sys_platform == 'l
 
 [project.optional-dependencies]
 heatmap = ["matplotlib>=3.5", "numpy>=1.21", "Pillow>=9.0"]
-dev = ["pytest>=7", "ruff>=0.4", "mypy>=1.8", "matplotlib>=3.5", "numpy>=1.21", "Pillow>=9.0", "jeepney>=0.8"]
+dev = ["pytest>=7", "ruff>=0.4", "mypy>=1.8", "interlog[heatmap]"]
 
 [project.urls]
 Homepage = "https://github.com/blakepiper/interlog"
@@ -39,6 +39,9 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 interlog = ["viewer_template.html"]
+
+[tool.ruff]
+target-version = "py39"   # the 3.9 syntax floor referenced by [tool.mypy]
 
 [tool.mypy]
 # Run under the CI interpreter; the 3.9 syntax floor is enforced by ruff.

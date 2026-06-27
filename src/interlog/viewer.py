@@ -11,7 +11,13 @@ import json
 import webbrowser
 from pathlib import Path
 
-from interlog.analyzer import InteractionAnalyzer, base_prefix, read_session_metadata
+from interlog.analyzer import (
+    InteractionAnalyzer,
+    base_prefix,
+    detect_rage_clicks,
+    mouse_down_clicks,
+    read_session_metadata,
+)
 
 _TEMPLATE = Path(__file__).parent / "viewer_template.html"
 _PLACEHOLDER = "__INTERLOG_DATA__"
@@ -46,14 +52,9 @@ def build_viewer(events_file, output=None, bucket_size=2.0, open_browser=True, v
         if e["event_type"] in _MARKER_TYPES
     ]
 
-    clicks = [
-        {"timestamp": e["timestamp"], "x": e.get("x"), "y": e.get("y")}
-        for e in analyzer.events
-        if e["event_type"] == "mouse_down"
-    ]
     rage = [
         {"t": round(r["timestamp"], 3), "x": r["x"], "y": r["y"], "count": r["click_count"]}
-        for r in analyzer._detect_rage_clicks(clicks)
+        for r in detect_rage_clicks(mouse_down_clicks(analyzer.events))
     ]
 
     session_label = base_prefix(events_file).rstrip("_") or events_file.parent.name
@@ -84,7 +85,7 @@ def build_viewer(events_file, output=None, bucket_size=2.0, open_browser=True, v
         output = Path(output)
         # A path ending in .html is a file; anything else is treated as a directory.
         if output.suffix.lower() != ".html":
-            output = output / f"{events_file.stem}_viewer.html"
+            output = output / f"{base_prefix(events_file)}viewer.html"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(html, encoding="utf-8")
 

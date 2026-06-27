@@ -5,33 +5,11 @@ using PIL for the Gaussian blur (avoids a scipy dependency) and matplotlib
 for compositing and output.
 """
 
-import csv
-import json
-import math
 import shutil
 import subprocess
 from pathlib import Path
 
-_RAGE_WINDOW_S = 1.0
-_RAGE_MIN_CLICKS = 3
-_RAGE_RADIUS_PX = 50
-
-
-def _load_events(events_path):
-    events = []
-    with open(events_path, newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row.get("timestamp"):
-                row["timestamp"] = float(row["timestamp"])
-            for field in ("x", "y"):
-                if row.get(field):
-                    try:
-                        row[field] = int(float(row[field]))
-                    except (ValueError, TypeError):
-                        pass
-            events.append(row)
-    return events
+from interlog.analyzer import detect_rage_clicks, load_event_rows, read_session_metadata
 
 
 def _grab_frame(video_path, out_path, duration, frame_at=0.25):
@@ -59,21 +37,7 @@ def _infer_bounds(events):
 
 def _rage_timestamps(click_events):
     """Return the set of event timestamps that belong to a rage-click burst."""
-    rage = set()
-    for i in range(len(click_events) - 2):
-        window = [click_events[i]]
-        for j in range(i + 1, len(click_events)):
-            if click_events[j]["timestamp"] - click_events[i]["timestamp"] > _RAGE_WINDOW_S:
-                break
-            window.append(click_events[j])
-        if len(window) < _RAGE_MIN_CLICKS:
-            continue
-        cx, cy = click_events[i].get("x", 0), click_events[i].get("y", 0)
-        if all(math.hypot(c.get("x", 0) - cx, c.get("y", 0) - cy) <= _RAGE_RADIUS_PX
-               for c in window[1:]):
-            for c in window:
-                rage.add(c["timestamp"])
-    return rage
+    return {t for b in detect_rage_clicks(click_events) for t in b["timestamps"]}
 
 
 def _heatmap_cmap():
@@ -88,10 +52,7 @@ def _heatmap_cmap():
         (0.88, (1.00, 0.30, 0.00, 0.95)),
         (1.00, (1.00, 1.00, 1.00, 1.00)),
     ]
-    return LinearSegmentedColormap.from_list(
-        "interlog_heat",
-        [(p, c) for p, c in stops],
-    )
+    return LinearSegmentedColormap.from_list("interlog_heat", stops)
 
 
 def build_heatmap(session_path, output=None, sigma=25, frame_at=0.25):
@@ -124,27 +85,25 @@ def build_heatmap(session_path, output=None, sigma=25, frame_at=0.25):
         output = session_dir / "heatmap.png"
     output = Path(output)
 
-    events = _load_events(events_path)
+    events = load_event_rows(events_path)
     if not events:
         raise ValueError("No events found in session.")
 
-    meta = {}
-    meta_path = session_dir / "metadata.json"
-    if meta_path.exists():
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-
+    meta = read_session_metadata(events_path)
     region = meta.get("capture_region")
     duration = meta.get("duration_seconds") or 0
     session_name = meta.get("session_name") or session_dir.name
     video_path = session_dir / "recording.mp4"
 
-    # Canvas origin and size
+    # Canvas origin and size. A degenerate region falls back to inferred bounds.
+    W = H = 0
     if region:
-        W, H = region["width"], region["height"]
+        W, H = region.get("width", 0), region.get("height", 0)
         ox, oy = region.get("x", 0), region.get("y", 0)
-    else:
+    if not (W > 0 and H > 0):
         W, H = _infer_bounds(events)
         ox, oy = 0, 0
+        region = None
 
     # Grab a background frame and let it override W/H when there's no region
     bg_img_path = None
@@ -159,7 +118,7 @@ def build_heatmap(session_path, output=None, sigma=25, frame_at=0.25):
                 probe.close()
                 bg_img_path = grabbed
             except Exception:
-                bg_img_path = None
+                grabbed.unlink(missing_ok=True)
 
     # Classify events
     move_events = [
@@ -210,10 +169,11 @@ def build_heatmap(session_path, output=None, sigma=25, frame_at=0.25):
             except Exception:
                 pass
 
+    cmap = _heatmap_cmap()
     if heat.max() > 0:
         ax.imshow(
             heat, extent=[0, W, H, 0], aspect="auto",
-            cmap=_heatmap_cmap(), alpha=0.85,
+            cmap=cmap, alpha=0.85,
             vmin=0.01, vmax=1.0, interpolation="bilinear",
         )
 
@@ -227,7 +187,7 @@ def build_heatmap(session_path, output=None, sigma=25, frame_at=0.25):
 
     # Density colorbar
     if heat.max() > 0:
-        sm = plt.cm.ScalarMappable(cmap=_heatmap_cmap(), norm=plt.Normalize(0, 1))
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0, 1))
         sm.set_array([])
         cbar = fig.colorbar(sm, ax=ax, orientation="vertical",
                             fraction=0.018, pad=0.008, shrink=0.35, aspect=18)

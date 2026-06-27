@@ -1,34 +1,23 @@
 """Event ↔ video time alignment.
 
-The single, tested source of truth for how an interaction timestamp maps onto a
-screen recording's timeline. The recorder computes an *offset* and writes it into
-``metadata.json``; the viewer applies ``video_time = event_time + offset`` to
-seek the recording to a given moment. The JS viewer mirrors
+The single, tested source of truth for mapping an interaction timestamp onto a
+screen recording: ``video_time = event_time + offset``. The recorder computes the
+offset and writes it to ``metadata.json``; the JS viewer mirrors
 ``video_time_for_event`` — keep the two in step.
 
-Timing model
-------------
-Both the logger and the screen recorder read the same monotonic clock
-(``time.monotonic()``):
-
-* ``mono_start`` — the logger's t=0 (the instant ``start()`` begins capturing).
-* ``video_first_frame_time`` — the monotonic time the recorder's first frame
-  landed (returned by ``ScreenRecorder.start_and_wait_until_live``).
-
-Because both readings come from the *same* monotonic clock, their difference is
-free of drift and immune to wall-clock adjustments (NTP, DST, manual changes)
-during a session. The offset arithmetic below is therefore exact; the residual
-alignment error is purely physical (see ``frame_quantization_error``).
+Both ``mono_start`` (the logger's t=0) and ``video_first_frame_time`` (when the
+recorder's first frame landed) come from the same ``time.monotonic()`` clock, so
+the offset arithmetic is exact and drift-free. The residual alignment error is
+purely physical (see ``frame_quantization_error``).
 """
 
 
 def event_offset(mono_start, video_first_frame_time):
     """Seconds to add to an event timestamp to reach video time.
 
-    ``event_offset`` inverts the two clocks' relationship: an event captured at
-    absolute monotonic time ``T`` has session time ``T - mono_start`` and should
-    map to video time ``T - video_first_frame_time``. Adding this offset to the
-    session time recovers exactly that (the ``mono_start`` terms cancel).
+    An event at monotonic time ``T`` has session time ``T - mono_start`` and
+    video time ``T - video_first_frame_time``; adding this offset recovers the
+    latter (the ``mono_start`` terms cancel).
     """
     return mono_start - video_first_frame_time
 
@@ -36,9 +25,9 @@ def event_offset(mono_start, video_first_frame_time):
 def video_time_for_event(event_time, offset):
     """Map a session-relative event time onto the recording's clock.
 
-    ``offset`` is the value from :func:`event_offset` (also persisted as
-    ``video_start_offset`` in session metadata). Negative results are clamped to
-    0 by callers that seek a real video element; the raw value is returned here.
+    ``offset`` is the value from :func:`event_offset` (persisted as
+    ``video_start_offset``). Callers seeking a real video element clamp negative
+    results to 0; the raw value is returned here.
     """
     return event_time + offset
 

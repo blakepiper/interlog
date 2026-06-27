@@ -18,6 +18,37 @@ from pathlib import Path
 from interlog import __version__
 
 
+def _console():
+    """A non-highlighting rich console (shared by every command)."""
+    from rich.console import Console
+    return Console(highlight=False)
+
+
+def _positive_float(value):
+    """argparse type for options that must be > 0 (e.g. --bucket-size)."""
+    f = float(value)
+    if f <= 0:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return f
+
+
+def _open_in_os(path):
+    """Best-effort open of a file in the OS default application."""
+    import subprocess
+    import sys
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", str(path)])
+        elif sys.platform == "win32":
+            import os
+            os.startfile(str(path))  # noqa: S606
+        else:
+            subprocess.Popen(["xdg-open", str(path)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
 def _build_parser():
     parser = argparse.ArgumentParser(
         prog="interlog",
@@ -38,6 +69,7 @@ Examples:
   interlog analyze --batch                     Aggregate all sessions in ./interlog-data/
   interlog analyze --batch ./sessions          Aggregate sessions from a custom directory
   interlog view p01                            Open the timeline viewer for a session
+  interlog heatmap p01                         Render a movement + click heatmap PNG
   interlog doctor --live                       Verify input capture works
   interlog report p01                          Generate a shareable HTML report
 """,
@@ -151,18 +183,16 @@ Examples:
         help="Output directory for analysis files (default: alongside the events file).",
     )
     p_analyze.add_argument(
-        "-b", "--bucket-size", type=float, default=5.0,
+        "-b", "--bucket-size", type=_positive_float, default=5.0,
         help="Time bucket size in seconds for intensity analysis (default: 5.0).",
     )
     p_analyze.add_argument(
         "--json", action="store_true",
-        help="Also write summary.json — a structured export with schema version, "
-             "session provenance, and native-typed metrics (for pandas/R).",
+        help="Also write summary.json (typed metrics + provenance, for pandas/R).",
     )
     p_analyze.add_argument(
         "--no-text", action="store_true",
-        help="Skip typed-text reconstruction (it runs by default, and is always "
-             "skipped automatically for privacy-mode sessions).",
+        help="Skip typed-text reconstruction (privacy-mode sessions always skip it).",
     )
     p_analyze.set_defaults(func=_cmd_analyze)
 
@@ -176,7 +206,7 @@ Examples:
         help="Output path or directory for the viewer HTML (default: alongside the events file).",
     )
     p_view.add_argument(
-        "-b", "--bucket-size", type=float, default=2.0,
+        "-b", "--bucket-size", type=_positive_float, default=2.0,
         help="Time bucket size in seconds for the intensity timeline (default: 2.0).",
     )
     p_view.add_argument(
@@ -202,7 +232,7 @@ Examples:
         help="Output HTML path (default: <session>/report.html).",
     )
     p_report.add_argument(
-        "-b", "--bucket-size", type=float, default=5.0,
+        "-b", "--bucket-size", type=_positive_float, default=5.0,
         help="Activity timeline bucket size in seconds (default: 5.0).",
     )
     p_report.add_argument(
@@ -234,12 +264,11 @@ def _cmd_record(args):
     )
 
     if args.screen:
-        from rich.console import Console
-        _console = Console(highlight=False)
+        console = _console()
         if args.fps < 1:
-            _console.print("[red]Error:[/red] --fps must be at least 1.")
+            console.print("[red]Error:[/red] --fps must be at least 1.")
             return 1
-        if not _attach_screen_recorder(logger, fps=args.fps, monitor=args.monitor, console=_console):
+        if not _attach_screen_recorder(logger, fps=args.fps, monitor=args.monitor, console=console):
             return 1
 
     logger.start()
@@ -250,8 +279,7 @@ def _attach_screen_recorder(logger, fps, monitor="primary", console=None):
     """Start ffmpeg screen capture and attach it to the logger. Returns success."""
     from interlog.screen import ScreenRecorder, ffmpeg_path
     if console is None:
-        from rich.console import Console
-        console = Console(highlight=False)
+        console = _console()
 
     if not ffmpeg_path():
         console.print("[red]Error:[/red] ffmpeg not found on PATH, so --screen is unavailable.")
@@ -279,11 +307,9 @@ def _attach_screen_recorder(logger, fps, monitor="primary", console=None):
 
 
 def _cmd_heatmap(args):
-    import sys
-    from rich.console import Console
     from interlog.heatmap import build_heatmap
 
-    console = Console(highlight=False)
+    console = _console()
     session_path = Path(args.session)
     if not session_path.exists():
         console.print(f"[red]Error:[/red] not found: {session_path}")
@@ -306,30 +332,18 @@ def _cmd_heatmap(args):
             return 1
 
     console.print(f"  [green]✓[/green]  Heatmap → [white]{output}[/white]")
-    console.print(f"  [dim]Tip: run[/dim] [bold cyan]interlog report[/bold cyan] [white]{Path(args.session).resolve()}[/white] [dim]to embed this in a shareable HTML report.[/dim]")
+    console.print(f"  [dim]Tip: run[/dim] [bold cyan]interlog report[/bold cyan] [white]{session_path.resolve()}[/white] [dim]to embed this in a shareable HTML report.[/dim]")
 
     if not args.no_open:
-        try:
-            import subprocess
-            if sys.platform == "darwin":
-                subprocess.Popen(["open", str(output)])
-            elif sys.platform == "win32":
-                import os
-                os.startfile(str(output))
-            else:
-                subprocess.Popen(["xdg-open", str(output)],
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
+        _open_in_os(output)
 
     return 0
 
 
 def _cmd_demo(args):
-    from rich.console import Console
     from interlog.demo import generate
 
-    console = Console(highlight=False)
+    console = _console()
     if args.sessions < 1:
         console.print("[red]Error:[/red] --sessions must be at least 1.")
         return 1
@@ -361,12 +375,11 @@ def _cmd_demo(args):
 
 
 def _cmd_list(args):
-    from rich.console import Console
     from rich.table import Table
     from rich import box
     from datetime import timedelta
 
-    console = Console(highlight=False)
+    console = _console()
     data_dir = Path(args.data_dir)
 
     console.print()
@@ -454,17 +467,12 @@ def _cmd_analyze(args):
     if args.batch is not None:
         return _cmd_analyze_batch(args)
 
-    from rich.console import Console
     from interlog.analyzer import InteractionAnalyzer, base_prefix
 
-    console = Console(highlight=False)
+    console = _console()
 
     if args.events_file is None:
         console.print("[red]Error:[/red] provide a session path or use --batch to aggregate a directory.")
-        return 1
-
-    if args.bucket_size <= 0:
-        console.print("[red]Error:[/red] --bucket-size must be greater than 0.")
         return 1
 
     events_path = _resolve_events_path(args.events_file)
@@ -604,10 +612,9 @@ def render_batch_table(console, rows, data_dir):
 
 def _cmd_analyze_batch(args):
     import csv as _csv
-    from rich.console import Console
     from interlog.analyzer import batch_analyze
 
-    console = Console(highlight=False)
+    console = _console()
     data_dir = Path(args.batch)
 
     if not data_dir.exists():
@@ -649,8 +656,7 @@ def _analyze_text(analyzer, events_path, out_dir, console=None):
     from interlog.text_analysis import is_redacted, lexical_stats, reconstruct_text
 
     if console is None:
-        from rich.console import Console
-        console = Console(highlight=False)
+        console = _console()
 
     if is_redacted(analyzer.events):
         console.print()
@@ -689,14 +695,9 @@ def _resolve_events_path(arg):
 
 def _cmd_view(args):
     import webbrowser
-    from rich.console import Console
     from interlog.viewer import build_viewer
 
-    console = Console(highlight=False)
-
-    if args.bucket_size <= 0:
-        console.print("[red]Error:[/red] --bucket-size must be greater than 0.")
-        return 1
+    console = _console()
 
     events_path = _resolve_events_path(args.events_file)
     if not events_path.exists():
@@ -705,24 +706,23 @@ def _cmd_view(args):
 
     session_dir = events_path.parent
     video_file = session_dir / "recording.mp4"
+    video_src = "recording.mp4" if (args.serve and video_file.exists()) else None
+
+    with console.status("[cyan]Building viewer…[/cyan]", spinner="dots"):
+        try:
+            output = build_viewer(
+                events_path,
+                output=args.output,
+                bucket_size=args.bucket_size,
+                open_browser=False,
+                video_src=video_src,
+            )
+        except ValueError as e:
+            console.print(f"[red]Error:[/red] {e}")
+            return 1
 
     if args.serve:
         from interlog.serve import serve_viewer
-
-        video_src = "recording.mp4" if video_file.exists() else None
-
-        with console.status("[cyan]Building viewer…[/cyan]", spinner="dots"):
-            try:
-                output = build_viewer(
-                    events_path,
-                    output=args.output,
-                    bucket_size=args.bucket_size,
-                    open_browser=False,
-                    video_src=video_src,
-                )
-            except ValueError as e:
-                console.print(f"[red]Error:[/red] {e}")
-                return 1
 
         httpd, url = serve_viewer(output.parent, output.name)
 
@@ -746,18 +746,9 @@ def _cmd_view(args):
 
         return 0
 
-    # Non-serve: write HTML and open directly
-    with console.status("[cyan]Building viewer…[/cyan]", spinner="dots"):
-        try:
-            output = build_viewer(
-                events_path,
-                output=args.output,
-                bucket_size=args.bucket_size,
-                open_browser=not args.no_open,
-            )
-        except ValueError as e:
-            console.print(f"[red]Error:[/red] {e}")
-            return 1
+    # Non-serve: open the written HTML directly.
+    if not args.no_open:
+        webbrowser.open(output.resolve().as_uri())
 
     console.print()
     console.rule("[bold cyan]InterLog Viewer[/bold cyan]", style="cyan dim")
@@ -771,19 +762,12 @@ def _cmd_view(args):
 
 
 def _cmd_report(args):
-    import sys
-    import webbrowser
-    from rich.console import Console
     from interlog.report import build_report
 
-    console = Console(highlight=False)
+    console = _console()
     session_path = Path(args.session)
     if not session_path.exists():
         console.print(f"[red]Error:[/red] not found: {session_path}")
-        return 1
-
-    if args.bucket_size <= 0:
-        console.print("[red]Error:[/red] --bucket-size must be greater than 0.")
         return 1
 
     with console.status("[cyan]Building report…[/cyan]", spinner="dots"):
@@ -812,17 +796,7 @@ def _cmd_report(args):
     console.print()
 
     if not args.no_open:
-        try:
-            if sys.platform == "darwin":
-                import subprocess
-                subprocess.Popen(["open", str(output)])
-            elif sys.platform == "win32":
-                import os
-                os.startfile(str(output))
-            else:
-                webbrowser.open(output.resolve().as_uri())
-        except Exception:
-            pass
+        _open_in_os(output)
 
     return 0
 
@@ -840,12 +814,11 @@ def main(argv=None):
 
     if not getattr(args, "command", None):
         from interlog.branding import print_banner
-        from rich.console import Console
         from rich.table import Table
 
         print_banner()
 
-        console = Console(highlight=False)
+        console = _console()
         console.print(f"\n  [dim]v{__version__} · local, private, MIT-licensed[/dim]\n")
 
         table = Table(box=None, show_header=False, pad_edge=False,

@@ -54,14 +54,11 @@ def _resample_points(points, dt):
     """Resample a time-stamped polyline onto a fixed time step ``dt``.
 
     ``points`` is a list of ``(t, x, y)`` in non-decreasing time order. Positions
-    are linearly interpolated in time onto an evenly spaced grid (t0, t0+dt, …,
-    t1) and returned as a list of ``(x, y)``. Because the grid spacing is fixed
-    rather than tied to the capture's native sampling rate, a fast mouse (many
-    samples) and a slow one (few samples) recording the *same* motion yield the
-    same resampled trajectory — removing the rate dependence that otherwise
-    biases sparse captures. Every measure derived from the pointer path (length,
-    deviations, direction-change counts) is built on this so it is comparable
-    across machines. Returns [] when the path spans no time.
+    are linearly interpolated onto an evenly spaced grid (t0, t0+dt, …, t1) and
+    returned as ``(x, y)``. The fixed grid spacing makes fast and slow mice
+    recording the same motion yield the same trajectory, which is what lets the
+    path measures be comparable across machines. Returns [] when the path spans
+    no time.
     """
     t0, t1 = points[0][0], points[-1][0]
     span = t1 - t0
@@ -166,6 +163,86 @@ def read_session_metadata(events_file):
     return {}
 
 
+def load_event_rows(events_file):
+    """Read a session's events CSV, coercing numeric fields in place.
+
+    A non-numeric cell is left as its original string rather than aborting the
+    whole load. Shared by the analyzer and the heatmap so both read the same way.
+    """
+    events = []
+    with open(events_file, newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            for field in ("timestamp", "x", "y", "dx", "dy"):
+                if row.get(field):
+                    try:
+                        row[field] = float(row[field]) if field == "timestamp" else int(float(row[field]))
+                    except (ValueError, TypeError):
+                        pass
+            events.append(row)
+    return events
+
+
+def mouse_down_clicks(events):
+    """Time-ordered mouse-down clicks as ``{timestamp, x, y}`` dicts."""
+    return [
+        {"timestamp": e["timestamp"], "x": e.get("x"), "y": e.get("y")}
+        for e in events
+        if e["event_type"] == "mouse_down"
+    ]
+
+
+def detect_rage_clicks(clicks, time_window=1.0, distance_threshold=50):
+    """Detect rage-click bursts: 3+ rapid clicks within a small area.
+
+    Rage clicks are an established UX-analytics signal for a broken or
+    unresponsive target. Each burst is counted once: clicks attributed to a
+    burst are consumed and not reused as the seed of another.
+
+    Args:
+        clicks: Click events with timestamp/x/y, time-ordered.
+        time_window: Window in seconds over which clicks are grouped.
+        distance_threshold: Max distance in pixels to count as the same area.
+
+    Returns:
+        One dict per burst with the seed click plus ``click_count`` and
+        ``timestamps`` (every click in the burst).
+    """
+    bursts = []
+    i = 0
+    n = len(clicks)
+    while i < n - 1:
+        window = [clicks[i]]
+        j = i + 1
+        while j < n and clicks[j]["timestamp"] - clicks[i]["timestamp"] <= time_window:
+            window.append(clicks[j])
+            j += 1
+
+        if len(window) < 3:
+            i += 1
+            continue
+
+        first = window[0]
+        same_area = all(
+            first["x"] is not None and c["x"] is not None
+            and math.hypot(c["x"] - first["x"], c["y"] - first["y"]) <= distance_threshold
+            for c in window[1:]
+        )
+        if same_area:
+            bursts.append({
+                "timestamp": first["timestamp"],
+                "x": first["x"],
+                "y": first["y"],
+                "click_count": len(window),
+                "timestamps": [c["timestamp"] for c in window],
+            })
+            i = j  # consume the whole burst so it is not recounted
+        else:
+            i += 1
+
+    return bursts
+
+
 class InteractionAnalyzer:
     """Analyzes interaction logs and generates statistics."""
 
@@ -182,22 +259,12 @@ class InteractionAnalyzer:
 
     def load_events(self):
         """Load events from CSV file."""
-        with open(self.events_file) as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                # Convert numeric fields (blank cells stay as empty strings)
-                if row.get("timestamp"):
-                    row["timestamp"] = float(row["timestamp"])
-                for field in ("x", "y", "dx", "dy"):
-                    if row.get(field):
-                        row[field] = int(float(row[field]))
-                self.events.append(row)
+        self.events = load_event_rows(self.events_file)
 
     def calculate_statistics(self):
         """Calculate summary statistics from events."""
         if not self.events:
             return self.stats
-
 
         # Basic counts
         event_counts = defaultdict(int)
@@ -206,15 +273,12 @@ class InteractionAnalyzer:
 
         # Session duration
         timestamps = [e["timestamp"] for e in self.events]
-        duration = max(timestamps) - min(timestamps) if timestamps else 0
+        min_time = min(timestamps)
+        duration = max(timestamps) - min_time
 
         # Click locations for rage click detection
-        clicks = [
-            {"timestamp": e["timestamp"], "x": e.get("x"), "y": e.get("y")}
-            for e in self.events
-            if e["event_type"] == "mouse_down"
-        ]
-        rage_clicks = self._detect_rage_clicks(clicks)
+        clicks = mouse_down_clicks(self.events)
+        rage_clicks = detect_rage_clicks(clicks)
 
         # Pauses (gaps between consecutive events)
         pauses = [
@@ -274,10 +338,7 @@ class InteractionAnalyzer:
             (e["timestamp"] for e in self.events if e["event_type"] != "mouse_move"),
             None,
         )
-        ttfi = (
-            first_interaction - min(timestamps)
-            if first_interaction is not None and timestamps else 0
-        )
+        ttfi = first_interaction - min_time if first_interaction is not None else 0
 
         # Click quality, pointer-path efficiency, and keyboard dynamics.
         double_clicks = self._count_double_clicks(clicks)
@@ -413,14 +474,9 @@ class InteractionAnalyzer:
         distance between the two clicks divided by the actual length of the
         pointer path travelled between them (1.0 = a perfectly direct move).
         This is a standard pointer-movement quality measure (cf. MacKenzie,
-        Kauppinen & Silfverberg, CHI 2001).
-
-        The result is built to be **comparable across machines**: it is a
-        dimensionless ratio (so the display device-pixel ratio cancels), and the
-        path length is measured on a trajectory resampled to a fixed time base
-        (``EFFICIENCY_RESAMPLE_HZ``) rather than the machine's native mouse
-        sampling rate. The only residual assumption is that the native rate is at
-        least the resample rate — true of essentially all mice.
+        Kauppinen & Silfverberg, CHI 2001). It is a dimensionless ratio measured
+        on a resampled trajectory, so it is comparable across machines (see the
+        module docstring).
 
         Returns None when no segment is long enough to score.
         """
@@ -658,58 +714,6 @@ class InteractionAnalyzer:
             "click_bbox_height_px": max(ys) - min(ys),
         }
 
-    def _detect_rage_clicks(self, clicks, time_window=1.0, distance_threshold=50):
-        """Detect rage-click bursts: 3+ rapid clicks within a small area.
-
-        Rage clicks are an established UX-analytics signal for a broken or
-        unresponsive target (the same idea used by session-replay tools).
-
-        Each burst is counted once. Clicks already attributed to a burst are
-        consumed and not reused as the seed of another, so a single sustained
-        burst yields one detection rather than one per starting index.
-
-        Args:
-            clicks: List of click events with timestamp, x, y (time-ordered).
-            time_window: Window in seconds over which clicks are grouped.
-            distance_threshold: Max distance in pixels to count as the same area.
-
-        Returns:
-            List of rage-click bursts (one dict per burst).
-        """
-        rage_clicks = []
-        i = 0
-        n = len(clicks)
-        while i < n - 1:
-            # Collect clicks falling within the time window of click i.
-            window = [clicks[i]]
-            j = i + 1
-            while j < n and clicks[j]["timestamp"] - clicks[i]["timestamp"] <= time_window:
-                window.append(clicks[j])
-                j += 1
-
-            if len(window) < 3:
-                i += 1
-                continue
-
-            first = window[0]
-            same_area = all(
-                first["x"] is not None and c["x"] is not None
-                and math.hypot(c["x"] - first["x"], c["y"] - first["y"]) <= distance_threshold
-                for c in window[1:]
-            )
-            if same_area:
-                rage_clicks.append({
-                    "timestamp": first["timestamp"],
-                    "x": first["x"],
-                    "y": first["y"],
-                    "click_count": len(window),
-                })
-                i = j  # consume the whole burst so it is not recounted
-            else:
-                i += 1
-
-        return rage_clicks
-
     def calculate_intensity(self, bucket_size=5.0):
         """
         Calculate interaction intensity over time.
@@ -723,39 +727,33 @@ class InteractionAnalyzer:
         if bucket_size <= 0:
             raise ValueError("bucket_size must be greater than 0")
 
-
         if not self.events:
             return []
 
         timestamps = [e["timestamp"] for e in self.events]
         min_time, max_time = min(timestamps), max(timestamps)
+        n_buckets = int((max_time - min_time) / bucket_size) + 1
 
-        buckets = []
-        current_time = min_time
-        while current_time <= max_time:
-            bucket_end = current_time + bucket_size
-
-            # Count events in this bucket (excluding mouse moves)
-            event_counts = defaultdict(int)
-            bucket_total = 0
-            for e in self.events:
-                if (
-                    current_time <= e["timestamp"] < bucket_end
-                    and e["event_type"] != "mouse_move"
-                ):
-                    event_counts[e["event_type"]] += 1
-                    bucket_total += 1
-
-            buckets.append({
-                "time_start": round(current_time, 2),
-                "time_end": round(bucket_end, 2),
-                "total_interactions": bucket_total,
-                "clicks": event_counts.get("mouse_down", 0),
-                "scrolls": event_counts.get("scroll", 0),
-                "keypresses": event_counts.get("key_press", 0),
-            })
-
-            current_time = bucket_end
+        buckets = [
+            {
+                "time_start": round(min_time + i * bucket_size, 2),
+                "time_end": round(min_time + (i + 1) * bucket_size, 2),
+                "total_interactions": 0,
+                "clicks": 0,
+                "scrolls": 0,
+                "keypresses": 0,
+            }
+            for i in range(n_buckets)
+        ]
+        field = {"mouse_down": "clicks", "scroll": "scrolls", "key_press": "keypresses"}
+        for e in self.events:
+            if e["event_type"] == "mouse_move":
+                continue
+            idx = min(int((e["timestamp"] - min_time) / bucket_size), n_buckets - 1)
+            buckets[idx]["total_interactions"] += 1
+            key = field.get(e["event_type"])
+            if key:
+                buckets[idx][key] += 1
 
         return buckets
 
@@ -851,20 +849,17 @@ class InteractionAnalyzer:
         if not buckets:
             return ""
         values = [b["total_interactions"] for b in buckets]
+        if len(values) > width:
+            # downsample: average each slice of buckets into one cell
+            step = len(values) / width
+            means = []
+            for i in range(width):
+                slice_ = values[int(i * step):int((i + 1) * step)] or [0]
+                means.append(sum(slice_) / len(slice_))
+            values = means
         blocks = " ▁▂▃▄▅▆▇█"
         max_v = max(values) or 1
-        chars = [blocks[min(8, int(v / max_v * 8))] for v in values]
-        if len(chars) > width:
-            # downsample by averaging
-            step = len(chars) / width
-            chars = [
-                blocks[min(8, int(
-                    sum(values[int(i * step):int((i + 1) * step)] or [0])
-                    / max(max_v, 1) * 8
-                ))]
-                for i in range(width)
-            ]
-        return "".join(chars)
+        return "".join(blocks[min(8, int(v / max_v * 8))] for v in values)
 
     def print_summary(self, console=None):
         """Print summary statistics to console using rich.

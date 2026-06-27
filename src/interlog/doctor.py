@@ -5,6 +5,7 @@ smoke test to confirm input capture works (useful for diagnosing OS
 permission issues on macOS/Linux).
 """
 
+import importlib.metadata
 import sys
 
 
@@ -31,7 +32,6 @@ def _check_python_version(console):
 
 def _check_pynput(console):
     try:
-        import importlib.metadata
         import pynput  # noqa: F401
         try:
             version = importlib.metadata.version("pynput")
@@ -56,7 +56,6 @@ def _check_ffmpeg(console):
 
 def _check_rich(console):
     try:
-        import importlib.metadata
         version = importlib.metadata.version("rich")
         _ok(console, f"rich [cyan]{version}[/cyan]")
     except Exception:
@@ -64,7 +63,6 @@ def _check_rich(console):
 
 
 def _check_heatmap_deps(console):
-    import importlib.metadata
     missing = []
     for pkg, import_name in [("matplotlib", "matplotlib"), ("numpy", "numpy"), ("Pillow", "PIL")]:
         try:
@@ -108,7 +106,6 @@ def _check_wayland_screen_deps(console):
     if os.environ.get("XDG_SESSION_TYPE", "").lower() != "wayland":
         return
     try:
-        import importlib.metadata
         import jeepney  # noqa: F401
         ver = importlib.metadata.version("jeepney")
         _ok(console, f"jeepney [cyan]{ver}[/cyan]  [dim](Wayland portal screen capture)[/dim]")
@@ -193,7 +190,7 @@ def run_doctor(live=False):
         console.print()
         return 1
 
-    if live and pynput_ok:
+    if live:
         result = _run_live_test(console)
         console.print()
         return 0 if result else 1

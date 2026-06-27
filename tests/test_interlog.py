@@ -5,14 +5,18 @@ drive its event handlers directly), so they run headless in CI on any OS.
 """
 
 import csv
+import http.client
 import json
 import math
 import re
+import threading
 import time
 
 import pytest
 
+from interlog import branding
 from interlog.analyzer import InteractionAnalyzer, base_prefix, batch_analyze
+from interlog.demo import generate, write_session
 from interlog.report import build_report
 from interlog.cli import _resolve_events_path
 from interlog.heatmap import _infer_bounds, _rage_timestamps
@@ -286,7 +290,6 @@ def test_save_summary_json_roundtrips(tmp_path):
 
 
 def test_summary_export_marks_synthetic_from_metadata(tmp_path):
-    from interlog.demo import generate
     paths = generate(tmp_path, seed=3)
     a = InteractionAnalyzer(paths[0] / "events.csv")
     a.load_events()
@@ -296,7 +299,6 @@ def test_summary_export_marks_synthetic_from_metadata(tmp_path):
 
 def test_analyze_json_flag_writes_structured_export(tmp_path):
     from interlog.cli import main
-    from interlog.demo import generate
     sess = generate(tmp_path, seed=5)[0]
     rc = main(["analyze", str(sess), "--json", "--no-text"])
     assert rc == 0
@@ -308,7 +310,6 @@ def test_analyze_json_flag_writes_structured_export(tmp_path):
 # --- demo data generation --------------------------------------------------
 
 def test_demo_generate_single_session(tmp_path):
-    from interlog.demo import generate
     paths = generate(tmp_path, sessions=1, seed=7)
     assert len(paths) == 1
     sess = paths[0]
@@ -328,7 +329,6 @@ def test_demo_generate_single_session(tmp_path):
 
 
 def test_demo_generate_multiple_feeds_batch(tmp_path):
-    from interlog.demo import generate
     paths = generate(tmp_path, sessions=4, seed=1)
     assert len(paths) == 4
     rows = batch_analyze(tmp_path)
@@ -336,14 +336,12 @@ def test_demo_generate_multiple_feeds_batch(tmp_path):
 
 
 def test_demo_is_reproducible_for_seed(tmp_path):
-    from interlog.demo import write_session
     a = write_session(tmp_path / "a", "s", profile="checkout", seed=42)
     b = write_session(tmp_path / "b", "s", profile="checkout", seed=42)
     assert (a / "events.csv").read_text() == (b / "events.csv").read_text()
 
 
 def test_demo_rejects_unknown_profile(tmp_path):
-    from interlog.demo import write_session
     with pytest.raises(ValueError):
         write_session(tmp_path, "s", profile="nope")
 
@@ -903,3 +901,151 @@ def test_batch_analyze_skips_missing_events(tmp_path):
     rows = batch_analyze(tmp_path)
     assert len(rows) == 1
     assert rows[0]["session"] == "good"
+
+
+# --- serve (request-level) -------------------------------------------------
+
+def _serve(tmp_path, body=b"0123456789"):
+    """Start a real server in a thread; return (conn, httpd) and the file name."""
+    (tmp_path / "viewer.html").write_text("<html></html>")
+    (tmp_path / "rec.bin").write_bytes(body)
+    httpd, url = serve_viewer(tmp_path, "viewer.html")
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    host, port = httpd.server_address
+    return http.client.HTTPConnection(host, port), httpd
+
+
+def test_serve_full_get_returns_200(tmp_path):
+    conn, httpd = _serve(tmp_path)
+    try:
+        conn.request("GET", "/rec.bin")
+        resp = conn.getresponse()
+        assert resp.status == 200
+        assert resp.read() == b"0123456789"
+    finally:
+        conn.close()
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_serve_range_returns_206(tmp_path):
+    conn, httpd = _serve(tmp_path)
+    try:
+        conn.request("GET", "/rec.bin", headers={"Range": "bytes=2-5"})
+        resp = conn.getresponse()
+        assert resp.status == 206
+        assert resp.getheader("Content-Range") == "bytes 2-5/10"
+        assert resp.getheader("Content-Length") == "4"
+        assert resp.read() == b"2345"
+    finally:
+        conn.close()
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_serve_unsatisfiable_range_returns_416(tmp_path):
+    conn, httpd = _serve(tmp_path)
+    try:
+        conn.request("GET", "/rec.bin", headers={"Range": "bytes=100-200"})
+        assert conn.getresponse().status == 416
+    finally:
+        conn.close()
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_serve_missing_file_with_range_returns_404(tmp_path):
+    conn, httpd = _serve(tmp_path)
+    try:
+        conn.request("GET", "/nope.bin", headers={"Range": "bytes=0-1"})
+        assert conn.getresponse().status == 404
+    finally:
+        conn.close()
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_parse_range_suffix_longer_than_file_serves_whole():
+    # bytes=-500 on a 10-byte file => the whole file, not 416.
+    assert _parse_range("bytes=-500", 10) == (0, 9)
+
+
+# --- branding --------------------------------------------------------------
+
+def test_banner_plain_has_no_ansi():
+    out = branding.banner(color=False)
+    assert "\033[" not in out
+    assert "capture . measure . replay" in out
+
+
+def test_banner_color_has_ansi():
+    assert "\033[" in branding.banner(color=True)
+
+
+def test_supports_color_respects_no_color(monkeypatch):
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert branding._supports_color() is False
+
+
+# --- viewer (directory output) ---------------------------------------------
+
+def test_build_viewer_into_directory_uses_session_prefix(tmp_path):
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": 0.1, "event_type": "mouse_down", "x": 1, "y": 1},
+    ])
+    out_dir = tmp_path / "out"
+    out = build_viewer(events, output=out_dir, open_browser=False)
+    # session-folder layout -> "viewer.html" in both the default and dir branch
+    assert out == out_dir / "viewer.html"
+    assert out.exists()
+
+
+# --- demo reproducibility --------------------------------------------------
+
+def test_demo_metadata_is_reproducible_for_seed(tmp_path):
+    a = write_session(tmp_path / "a", "s", profile="checkout", seed=42)
+    b = write_session(tmp_path / "b", "s", profile="checkout", seed=42)
+    assert (a / "metadata.json").read_text() == (b / "metadata.json").read_text()
+
+
+def test_demo_generate_rejects_zero_sessions(tmp_path):
+    with pytest.raises(ValueError):
+        generate(tmp_path, sessions=0)
+
+
+# --- regressions -----------------------------------------------------------
+
+def test_sparkline_downsamples_without_saturating(tmp_path):
+    # A long, uneven session must not collapse to a solid bar (every cell full).
+    events = tmp_path / "events.csv"
+    rows = []
+    for i in range(300):
+        # heavy activity early, sparse later -> the sparkline should vary
+        count = 5 if i < 50 else 1
+        for j in range(count):
+            rows.append({"timestamp": i + j * 0.01, "event_type": "mouse_down",
+                         "x": 1, "y": 1})
+    _write_events(events, rows)
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    a.calculate_statistics()
+    spark = a._sparkline(bucket_size=1.0, width=52)
+    assert len(spark) == 52
+    assert len(set(spark)) > 1            # not a single repeated glyph
+    assert spark.count("█") < len(spark)  # not saturated
+
+
+def test_reconstruct_text_handles_delete():
+    events = [
+        {"event_type": "key_press", "key": "h"},
+        {"event_type": "key_press", "key": "i"},
+        {"event_type": "key_press", "key": "Key.delete"},
+    ]
+    assert reconstruct_text(events) == "h"
+
+
+def test_lexical_stats_ignores_bare_apostrophe():
+    stats = lexical_stats("don't ' '' stop")
+    words = {"don't", "stop"}
+    assert stats["word_count"] == len(words)

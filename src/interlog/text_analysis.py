@@ -47,7 +47,7 @@ def is_redacted(events):
 def reconstruct_text(events):
     """Approximate the typed text from key_press events.
 
-    Backspace removes the previous character; space/enter/tab map to whitespace;
+    Backspace/delete remove the previous character; space/enter/tab map to whitespace;
     other special keys (shift, ctrl, arrows, ...) are ignored. See the module
     docstring for the inherent limitations.
     """
@@ -60,14 +60,14 @@ def reconstruct_text(events):
             out.append(key)
         elif key in _SPECIAL:
             out.append(_SPECIAL[key])
-        elif key == "Key.backspace" and out:
+        elif key in ("Key.backspace", "Key.delete") and out:
             out.pop()
     return "".join(out)
 
 
 def lexical_stats(text, top_n=15):
     """Dependency-free lexical summary of reconstructed text."""
-    words = re.findall(r"[a-z']+", text.lower())
+    words = re.findall(r"[a-z]+(?:'[a-z]+)*", text.lower())
     keywords = Counter(w for w in words if len(w) > 2 and w not in STOPWORDS)
     return {
         "char_count": len(text),

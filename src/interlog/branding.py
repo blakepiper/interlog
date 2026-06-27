@@ -26,36 +26,41 @@ _DIM = "\033[2m"
 _RESET = "\033[0m"
 
 
-def _enable_color():
+def _enable_windows_vt():
+    """Enable ANSI escape processing on the Windows console. Returns success."""
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-11)
+        mode = ctypes.c_uint()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        kernel32.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VT_PROCESSING
+        return True
+    except Exception:
+        return False
+
+
+def _supports_color():
     """Return True if we should emit ANSI color (enabling VT on Windows)."""
     if os.environ.get("NO_COLOR"):
         return False
     if not sys.stdout.isatty():
         return False
     if sys.platform == "win32":
-        try:
-            import ctypes
-
-            kernel32 = ctypes.windll.kernel32
-            handle = kernel32.GetStdHandle(-11)
-            mode = ctypes.c_uint()
-            if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-                return False
-            kernel32.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VT_PROCESSING
-        except Exception:
-            return False
+        return _enable_windows_vt()
     return True
 
 
 def banner(color=None):
     """Return the banner as a string."""
     if color is None:
-        color = _enable_color()
-
-    chevrons = f"   >>>>  {_TAGLINE}  <<<<"
-    subtitle = f"        {_SUBTITLE}"
+        color = _supports_color()
 
     if not color:
+        chevrons = f"   >>>>  {_TAGLINE}  <<<<"
+        subtitle = f"        {_SUBTITLE}"
         return f"{_ART}\n{chevrons}\n{subtitle}"
 
     art = f"{_BOLD}{_CYAN}{_ART}{_RESET}"

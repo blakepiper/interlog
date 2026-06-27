@@ -12,6 +12,8 @@ from string import Template
 from interlog.analyzer import (
     LONG_PAUSE_THRESHOLD_S,
     InteractionAnalyzer,
+    detect_rage_clicks,
+    mouse_down_clicks,
     read_session_metadata,
 )
 
@@ -249,8 +251,9 @@ def _build_sparkline_svg(buckets, rage_ts, duration, width=840, height=90):
             f'width="{max(1, bar_w - 0.8):.2f}" height="{h}" fill="#3a5a9f"/>'
         )
 
+    origin = buckets[0]["time_start"]
     for t in rage_ts:
-        x = (t / (duration or 1)) * width
+        x = ((t - origin) / (duration or 1)) * width
         parts.append(
             f'<line x1="{x:.1f}" y1="0" x2="{x:.1f}" y2="{height}" '
             f'stroke="#ef4444" stroke-width="1.5"/>'
@@ -306,18 +309,8 @@ def build_report(session_path, output=None, bucket_size=5.0):
     buckets = analyzer.calculate_intensity(bucket_size)
     duration = s["session_duration_seconds"]
 
-    clicks = [
-        {"timestamp": e["timestamp"], "x": e.get("x"), "y": e.get("y")}
-        for e in analyzer.events
-        if e["event_type"] == "mouse_down"
-    ]
-    rage_ts = [r["timestamp"] for r in analyzer._detect_rage_clicks(clicks)]
-
-    sparkline_svg = _build_sparkline_svg(
-        [{"total_interactions": b["total_interactions"]} for b in buckets],
-        rage_ts,
-        duration,
-    )
+    rage_ts = [b["timestamp"] for b in detect_rage_clicks(mouse_down_clicks(analyzer.events))]
+    sparkline_svg = _build_sparkline_svg(buckets, rage_ts, duration)
 
     heatmap_path = session_dir / "heatmap.png"
     heatmap_src = _encode_image(heatmap_path) if heatmap_path.exists() else None
@@ -366,7 +359,7 @@ def build_report(session_path, output=None, bucket_size=5.0):
         modality_switches=f"{s['modality_switches_per_minute']:.1f}",
         pre_click_dwell=pre_click_dwell,
         click_spread=click_spread,
-        bucket_size=int(bucket_size) if bucket_size == int(bucket_size) else bucket_size,
+        bucket_size=f"{bucket_size:g}",
         sparkline_svg=sparkline_svg,
         heatmap_block=heatmap_block,
     )
