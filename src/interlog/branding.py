@@ -18,12 +18,24 @@ _ART = r"""
 _TAGLINE = "capture . measure . replay"
 _SUBTITLE = "interaction logging for HCI research"
 
-_CYAN = "\033[38;5;44m"
+# Per-line cyan→blue gradient applied down the logo (xterm-256 color indices).
+_GRADIENT = [87, 51, 45, 39, 33, 27]
+
 _BLUE = "\033[38;5;39m"
 _YELLOW = "\033[38;5;221m"
 _BOLD = "\033[1m"
 _DIM = "\033[2m"
 _RESET = "\033[0m"
+
+
+def _gradient_art():
+    """The logo with a cyan→blue vertical gradient, one color per line."""
+    lines = _ART.split("\n")[1:]  # drop the leading blank line
+    out = []
+    for i, line in enumerate(lines):
+        color = _GRADIENT[min(i, len(_GRADIENT) - 1)]
+        out.append(f"{_BOLD}\033[38;5;{color}m{line}{_RESET}")
+    return "\n" + "\n".join(out)
 
 
 def _enable_windows_vt():
@@ -63,10 +75,9 @@ def banner(color=None):
         subtitle = f"        {_SUBTITLE}"
         return f"{_ART}\n{chevrons}\n{subtitle}"
 
-    art = f"{_BOLD}{_CYAN}{_ART}{_RESET}"
     chevrons = f"{_BOLD}{_YELLOW}   >>>>  {_RESET}{_BLUE}{_TAGLINE}{_RESET}{_BOLD}{_YELLOW}  <<<<{_RESET}"
     subtitle = f"{_DIM}        {_SUBTITLE}{_RESET}"
-    return f"{art}\n{chevrons}\n{subtitle}"
+    return f"{_gradient_art()}\n{chevrons}\n{subtitle}"
 
 
 def print_banner(color=None):

@@ -19,7 +19,10 @@ from rich.console import Console
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
+from rich.text import Text  # noqa: E402
+
 from interlog.analyzer import InteractionAnalyzer, batch_analyze  # noqa: E402
+from interlog.branding import banner  # noqa: E402
 from interlog.cli import render_batch_table  # noqa: E402
 from interlog.demo import write_session  # noqa: E402
 
@@ -37,6 +40,14 @@ HERO = "P02_checkout"
 
 def main():
     IMG_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Banner: the exact colored logo the CLI prints, exported as an SVG so the
+    # README header and the terminal art can never drift apart.
+    con = Console(record=True, width=52, highlight=False)
+    con.print(Text.from_ansi(banner(color=True)))
+    (IMG_DIR / "banner.svg").write_text(
+        con.export_svg(title="interlog"), encoding="utf-8")
+    print(f"wrote {IMG_DIR / 'banner.svg'}")
 
     with tempfile.TemporaryDirectory() as tmp:
         data = Path(tmp)
