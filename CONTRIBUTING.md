@@ -68,7 +68,8 @@ pyproject.toml         # Packaging + the `interlog` console script
 docs/METRICS.md        # Definitions, formulas, and limitations of every metric
 tools/
   capture_screenshots.py       # Regenerates the README terminal SVGs + heatmap/compare PNGs
-  capture_html_screenshots.py  # Optional: report.html + viewer screenshots (needs a browser)
+  capture_html_screenshots.py  # Optional: report.html screenshot (needs a browser)
+  capture_viewer_gif.py        # Optional: the synced-viewer demo GIF (needs a browser + ffmpeg)
 tests/
   test_interlog.py     # pytest suite (headless, no pynput/ffmpeg required)
 ```
@@ -101,11 +102,12 @@ python tools/capture_screenshots.py   # banner.svg, analyze.svg, batch.svg, heat
 ```
 
 The HTML report and the synced viewer need a real browser to render, so their
-screenshots live in a separate, optional tool:
+images live in separate, optional tools:
 
 ```bash
-pip install playwright && playwright install chromium
-python tools/capture_html_screenshots.py   # writes docs/img/report.png, viewer.png
+pip install playwright && playwright install chromium   # ffmpeg also required for the GIF
+python tools/capture_html_screenshots.py   # docs/img/report.png
+python tools/capture_viewer_gif.py         # docs/img/viewer.gif
 ```
 
 ## Pull Request Process

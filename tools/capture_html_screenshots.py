@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Capture PNG screenshots of the HTML report and the synced viewer.
+"""Capture a PNG screenshot of the HTML report (docs/img/report.png).
 
-These two outputs are real web pages (the report is self-contained HTML; the
-viewer syncs to a <video>), so rendering them needs a browser. That can't run in
-plain CI, so this is a separate, optional tool from ``capture_screenshots.py``.
+The report is a real web page, so rendering it needs a browser — this can't run
+in plain CI, so it's a separate, optional tool from ``capture_screenshots.py``.
+The synced viewer is captured as an animation by ``capture_viewer_gif.py``.
 
 Setup (one time):
 
@@ -14,9 +14,8 @@ Run from the repo root:
 
     python tools/capture_html_screenshots.py
 
-Writes ``docs/img/report.png`` (and ``docs/img/viewer.png`` if a recording is
-present). Uses the same synthetic session generator as ``interlog demo`` so the
-screenshots come from the real code paths and can't drift from reality.
+Renders from the same hero session as the other screenshots, via the real
+``build_report`` code path, so it can't drift from reality.
 """
 
 import sys
@@ -25,10 +24,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "tools"))
 
-from interlog.demo import write_session  # noqa: E402
+from capture_screenshots import write_hero_session  # noqa: E402
+from interlog.heatmap import build_heatmap  # noqa: E402
 from interlog.report import build_report  # noqa: E402
-from interlog.viewer import build_viewer  # noqa: E402
 
 IMG_DIR = ROOT / "docs" / "img"
 
@@ -52,15 +52,14 @@ def main():
 
     IMG_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
-        session = write_session(Path(tmp), "P02_checkout", profile="checkout", seed=8)
+        session = write_hero_session(Path(tmp) / "checkout-flow")
+        build_heatmap(session)               # so the report embeds it (no placeholder)
         report = build_report(session)
-        viewer = build_viewer(session / "events.csv", open_browser=False)
 
         with sync_playwright() as p:
             browser = p.chromium.launch()
             page = browser.new_page(device_scale_factor=2)
             _shoot(page, report.resolve().as_uri(), IMG_DIR / "report.png")
-            _shoot(page, viewer.resolve().as_uri(), IMG_DIR / "viewer.png")
             browser.close()
 
 

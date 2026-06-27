@@ -76,9 +76,8 @@ def main():
         # thin heatmap; synthesize a denser movement field so the screenshot
         # shows what a real session's density map actually looks like.
         from interlog.heatmap import build_heatmap
-        hm = data / "heatmap_demo"
-        _write_heatmap_session(hm)
-        build_heatmap(hm, output=IMG_DIR / "heatmap.png", sigma=20)
+        hero = write_hero_session(data / "hero")
+        build_heatmap(hero, output=IMG_DIR / "heatmap.png", sigma=20)
         print(f"wrote {IMG_DIR / 'heatmap.png'}")
 
         # Cross-session comparison chart.
@@ -86,8 +85,13 @@ def main():
         print(f"wrote {IMG_DIR / 'compare.png'}")
 
 
-def _write_heatmap_session(session_dir):
-    """A dense, clustered movement field that makes the heatmap show real heat."""
+W, H = 1440, 810
+
+
+def write_hero_session(session_dir, name="checkout-flow"):
+    """One rich synthetic session that powers every screenshot: dense pointer
+    movement (so the heatmap shows real heat) plus realistic clicks, typing, a
+    scroll, and a rage burst. Returns the session path. Reproducible by seed."""
     import csv
     import json
     import random
@@ -96,51 +100,72 @@ def _write_heatmap_session(session_dir):
 
     session_dir.mkdir(parents=True, exist_ok=True)
     rng = random.Random(7)
-    W, H = 1440, 810
-    # (x, y, weight) — weight scales dwell density so one zone reads "hottest".
+    dt = 0.008  # ~125 Hz pointer sampling
+    # (x, y, dwell-weight, kind) — weight scales density so one zone reads hottest.
     hotspots = [
-        (330, 240, 1.0),
-        (1050, 250, 0.45),
-        (760, 560, 2.6),   # primary CTA — the hot focal point
-        (300, 650, 0.5),
-        (1120, 640, 0.8),
+        (330, 240, 1.0, "field"),
+        (1060, 250, 0.9, "field"),
+        (760, 560, 2.1, "cta"),     # primary button — the hot focal point
+        (300, 650, 0.85, "link"),
+        (1130, 640, 1.1, "field"),
     ]
-
     rows, t = [], 0.0
 
     def clamp(v, hi):
         return int(min(hi - 1, max(0, v)))
 
+    def add(event_type, **kw):
+        rows.append({**{k: "" for k in EVENT_FIELDS},
+                     "timestamp": round(t, 3), "event_type": event_type, **kw})
+
     def move(x, y):
         nonlocal t
-        t += 0.012
-        rows.append({**{k: "" for k in EVENT_FIELDS}, "timestamp": round(t, 3),
-                     "event_type": "mouse_move", "x": clamp(x, W), "y": clamp(y, H)})
+        t += dt
+        add("mouse_move", x=clamp(x, W), y=clamp(y, H))
 
     def click(x, y):
         nonlocal t
-        t += 0.18
-        rows.append({**{k: "" for k in EVENT_FIELDS}, "timestamp": round(t, 3),
-                     "event_type": "mouse_down", "x": clamp(x, W), "y": clamp(y, H),
-                     "button": "Button.left"})
+        t += 0.16
+        add("mouse_down", x=clamp(x, W), y=clamp(y, H), button="Button.left")
+        t += 0.05
+        add("mouse_up", x=clamp(x, W), y=clamp(y, H), button="Button.left")
+
+    def typ(text):
+        nonlocal t
+        for ch in text:
+            t += rng.uniform(0.07, 0.2)
+            add("key_press", key=ch)
+            t += 0.03
+            add("key_release", key=ch)
 
     cur = (hotspots[0][0], hotspots[0][1])
-    for hx, hy, weight in hotspots:
-        # navigate from the previous hotspot (a faint trail), then dwell densely
-        for k in range(60):
-            f = k / 60
-            move(cur[0] + (hx - cur[0]) * f + rng.gauss(0, 8),
-                 cur[1] + (hy - cur[1]) * f + rng.gauss(0, 8))
-        # a tight core plus a looser halo reads as a real dwell cluster
-        for _ in range(int(1600 * weight)):
-            move(rng.gauss(hx, 22), rng.gauss(hy, 19))
-        for _ in range(int(500 * weight)):
-            move(rng.gauss(hx, 55), rng.gauss(hy, 48))
-        click(hx, hy)
+    for i, (hx, hy, weight, kind) in enumerate(hotspots):
+        if i:  # a direct transit from the previous hotspot (keeps path efficient)
+            for k in range(45):
+                f = k / 45
+                move(cur[0] + (hx - cur[0]) * f + rng.gauss(0, 6),
+                     cur[1] + (hy - cur[1]) * f + rng.gauss(0, 6))
+        click(hx, hy)  # click on arrival, so the transit segment scores directly
+        # dwell densely around the target — these local moves feed the heatmap but
+        # sit below the path-efficiency segment threshold, so they don't skew it
+        for _ in range(int(1050 * weight)):
+            move(rng.gauss(hx, 20), rng.gauss(hy, 17))
+        for _ in range(int(300 * weight)):
+            move(rng.gauss(hx, 52), rng.gauss(hy, 45))
+        if kind == "field":
+            typ(rng.choice(["jordan", "4111 1111", "checkout@mail"]))
+        elif kind == "cta":
+            t += 0.2
+            add("scroll", x=hx, y=hy, dx=0, dy=-3)
+        click(hx + rng.randint(-5, 5), hy + rng.randint(-5, 5))  # settle before leaving
+        t += rng.uniform(0.3, 0.8)  # think time
         cur = (hx, hy)
 
-    # one rage burst, so a red marker shows alongside the density
-    for _ in range(4):
+    for k in range(45):  # move to the first field, then rage-click it
+        f = k / 45
+        move(cur[0] + (330 - cur[0]) * f + rng.gauss(0, 6),
+             cur[1] + (240 - cur[1]) * f + rng.gauss(0, 6))
+    for _ in range(4):  # a rage burst → red marker on heatmap and timeline
         click(330 + rng.randint(-6, 6), 240 + rng.randint(-6, 6))
 
     with open(session_dir / "events.csv", "w", newline="") as f:
@@ -148,10 +173,14 @@ def _write_heatmap_session(session_dir):
         w.writeheader()
         w.writerows(rows)
     (session_dir / "metadata.json").write_text(json.dumps({
-        "session_name": "checkout-flow",
+        "session_name": name,
+        "start_time": "2024-01-01T10:15:00",
         "synthetic": True,
+        "duration_seconds": round(t, 3),
+        "total_events": len(rows),
         "capture_region": {"x": 0, "y": 0, "width": W, "height": H, "dpi_scale": 1.0},
     }))
+    return session_dir
 
 
 def _render_comparison_chart(rows, out_path):

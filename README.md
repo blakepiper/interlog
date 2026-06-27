@@ -214,6 +214,12 @@ interlog report interlog-data/p01           # shareable HTML report (embeds heat
 seeks without downloading the whole file. Press Ctrl+C to stop it.
 
 <p align="center">
+  <img src="docs/img/viewer.gif" alt="interlog view — clicking a hot spot jumps the screen recording to that moment" width="820">
+  <br>
+  <em><code>interlog view</code> — click a hot spot or the timeline and the recording jumps to that moment.</em>
+</p>
+
+<p align="center">
   <img src="docs/img/heatmap.png" alt="interlog heatmap — mouse-movement density with click and rage-click markers" width="760">
   <br>
   <em><code>interlog heatmap</code> — where the pointer dwelled, with clicks (white) and rage clicks (red).</em>
@@ -476,6 +482,10 @@ requires the `[heatmap]` extras.
 
 A self-contained HTML report with metric cards, an SVG activity timeline, and the
 heatmap embedded as base64. Opens in any browser and screenshots cleanly.
+
+<p align="center">
+  <img src="docs/img/report.png" alt="interlog report — a self-contained HTML report with metric cards, an activity timeline, and an embedded heatmap" width="720">
+</p>
 
 ### `aggregate.csv`
 
