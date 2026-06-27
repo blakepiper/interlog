@@ -1,6 +1,8 @@
 # InterLog
 
 [![CI](https://github.com/blakepiper/interlog/actions/workflows/ci.yml/badge.svg)](https://github.com/blakepiper/interlog/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ```
      ____      __            __
@@ -18,6 +20,12 @@ InterLog captures timestamped keyboard and mouse activity, records the screen,
 and turns a session into *structured, analyzable data* — not just a video you
 have to watch end to end. It runs entirely on your machine: no cloud, no
 accounts, no telemetry.
+
+<p align="center">
+  <img src="docs/img/analyze.svg" alt="interlog analyze — a session summary with rates, pointer accuracy, keyboard rhythm, and interaction signals" width="760">
+  <br>
+  <em><code>interlog analyze</code> turns one session into descriptive, literature-grounded metrics.</em>
+</p>
 
 > [!WARNING]
 > **InterLog captures input globally, across every application — not just the
@@ -230,6 +238,10 @@ interlog analyze --batch [DIR]
 `--batch` prints a cross-session table (duration, clicks/min, rage clicks, long
 pauses, path efficiency) with a mean ± SD row, and writes `aggregate.csv` to the
 data directory.
+
+<p align="center">
+  <img src="docs/img/batch.svg" alt="interlog analyze --batch — a cross-session table with a mean ± SD footer row" width="780">
+</p>
 
 ### `heatmap` — Generate a density PNG
 

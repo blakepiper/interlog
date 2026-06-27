@@ -467,29 +467,15 @@ def _cmd_analyze(args):
     return 0
 
 
-def _cmd_analyze_batch(args):
-    import csv as _csv
+def render_batch_table(console, rows, data_dir):
+    """Render the cross-session aggregate table (header + rows + mean±SD footer).
+
+    Pulled out of the command so a recording console can capture it for the
+    README screenshots, and so the rendering is testable apart from file I/O.
+    """
     import statistics as _stats
-    from rich.console import Console
     from rich.table import Table
     from rich import box
-    from interlog.analyzer import batch_analyze
-
-    console = Console(highlight=False)
-    data_dir = Path(args.batch)
-
-    if not data_dir.exists():
-        console.print(f"[red]Error:[/red] directory not found: {data_dir}")
-        return 1
-
-    with console.status("[cyan]Analyzing sessions…[/cyan]", spinner="dots"):
-        rows = batch_analyze(data_dir)
-
-    if not rows:
-        console.print(f"[yellow]No analyzed sessions found in[/yellow] {data_dir}")
-        console.print("  [dim]Run 'interlog analyze <session>' on each session first, or make sure "
-                      "events.csv files exist.[/dim]")
-        return 1
 
     console.print()
     console.rule(
@@ -509,7 +495,7 @@ def _cmd_analyze_batch(args):
     table.add_column("Session", style="white", min_width=20)
     table.add_column("Duration", justify="right", min_width=8)
     table.add_column("Clicks/min", justify="right", min_width=10, style="cyan")
-    table.add_column("Act/min", justify="right", min_width=7, style="cyan")
+    table.add_column("Act/min", justify="right", min_width=11, style="cyan")
     table.add_column("Rage", justify="right", min_width=5)
     table.add_column("Double", justify="right", min_width=6)
     table.add_column("Long pause", justify="right", min_width=10)
@@ -556,6 +542,30 @@ def _cmd_analyze_batch(args):
     )
 
     console.print(table)
+
+
+def _cmd_analyze_batch(args):
+    import csv as _csv
+    from rich.console import Console
+    from interlog.analyzer import batch_analyze
+
+    console = Console(highlight=False)
+    data_dir = Path(args.batch)
+
+    if not data_dir.exists():
+        console.print(f"[red]Error:[/red] directory not found: {data_dir}")
+        return 1
+
+    with console.status("[cyan]Analyzing sessions…[/cyan]", spinner="dots"):
+        rows = batch_analyze(data_dir)
+
+    if not rows:
+        console.print(f"[yellow]No analyzed sessions found in[/yellow] {data_dir}")
+        console.print("  [dim]Run 'interlog analyze <session>' on each session first, or make sure "
+                      "events.csv files exist.[/dim]")
+        return 1
+
+    render_batch_table(console, rows, data_dir)
 
     # Write aggregate.csv
     agg_path = data_dir / "aggregate.csv"

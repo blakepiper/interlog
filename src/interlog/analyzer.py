@@ -784,13 +784,18 @@ class InteractionAnalyzer:
             ]
         return "".join(chars)
 
-    def print_summary(self):
-        """Print summary statistics to console using rich."""
+    def print_summary(self, console=None):
+        """Print summary statistics to console using rich.
+
+        ``console`` lets a caller pass a configured Console (e.g. a recording one
+        for screenshot capture); defaults to a fresh non-highlighting console.
+        """
         from rich.console import Console
         from rich.table import Table
         from rich.columns import Columns
 
-        console = Console(highlight=False)
+        if console is None:
+            console = Console(highlight=False)
         s = self.stats
         if not s:
             console.print("[dim]No statistics calculated[/dim]")
@@ -852,7 +857,10 @@ class InteractionAnalyzer:
         t_kbd.add_column("", justify="right", style="cyan", min_width=12)
         cpm = s["typing_chars_per_minute"]
         if cpm is None:
-            t_kbd.add_row("Typing", "[dim]privacy mode[/dim]")
+            # None means either privacy mode (keys redacted) or simply no typing;
+            # distinguish them so a no-typing session isn't mislabelled.
+            label = "[dim]none[/dim]" if s["total_keypresses"] == 0 else "[dim]privacy mode[/dim]"
+            t_kbd.add_row("Typing", label)
         else:
             t_kbd.add_row("Typing speed", f"{cpm:.0f} cpm")
             t_kbd.add_row("Corrections",

@@ -60,11 +60,15 @@ src/interlog/
   heatmap.py           # build_heatmap() — mouse density PNG (optional deps)
   report.py            # build_report() — self-contained HTML report with embedded heatmap
   text_analysis.py     # Typed-text reconstruction and lexical stats
+  sync.py              # Event<->video alignment formula + sync error budget
   doctor.py            # Environment + input-capture diagnostics
   branding.py          # ASCII banner
 pyproject.toml         # Packaging + the `interlog` console script
+docs/METRICS.md        # Definitions, formulas, and limitations of every metric
+tools/
+  capture_screenshots.py  # Regenerates the README SVGs from synthetic sessions
 tests/
-  test_interlog.py     # pytest suite (34 tests, headless, no pynput/ffmpeg required)
+  test_interlog.py     # pytest suite (headless, no pynput/ffmpeg required)
 ```
 
 ## Code Style
@@ -83,6 +87,16 @@ pytest
 ```
 
 Tests are headless (no pynput or ffmpeg required) and run on all supported platforms via CI.
+
+## Regenerating the README screenshots
+
+The README images are crisp SVGs rendered from the real `analyze` / `--batch`
+code paths over synthetic sessions — never hand-edited. After a change that
+affects terminal output, regenerate them:
+
+```bash
+python tools/capture_screenshots.py   # writes docs/img/*.svg
+```
 
 ## Pull Request Process
 

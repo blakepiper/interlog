@@ -7,6 +7,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **README screenshots** — crisp SVGs of `analyze` and `analyze --batch`,
+  rendered from the real code paths via `tools/capture_screenshots.py` (so they
+  can't drift), plus Python-version and license badges.
 - **Richer movement & input metrics** (all in `analyze`/`summary.csv`, documented
   in `docs/METRICS.md`):
   - MacKenzie CHI 2001 accuracy measures on click→click movements — movement
@@ -36,6 +39,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 - The recorder now builds metadata via a testable `_build_metadata()` and reuses
   `interlog.sync.event_offset` for the alignment offset.
+- `analyze` and `analyze --batch` rendering accept an injectable console
+  (`print_summary(console=…)`, `render_batch_table`) so output is capturable.
+
+### Fixed
+- The summary keyboard panel labelled a session with no typing as "privacy
+  mode"; it now reads "none" and reserves "privacy mode" for redacted captures.
 
 ## [0.1.0] — 2026-06-26
 

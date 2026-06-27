@@ -237,6 +237,44 @@ def test_privacy_mode_nulls_keyboard_identity_metrics(tmp_path):
     assert s["interkey_interval_cv"] is None  # too few intervals here
 
 
+# --- terminal rendering (capturable) ---------------------------------------
+
+def _render(renderable_call):
+    from rich.console import Console
+    con = Console(record=True, width=90, highlight=False, force_terminal=True)
+    renderable_call(con)
+    return con.export_text()
+
+
+def test_print_summary_labels_no_typing_distinctly(tmp_path):
+    # A mouse-only session must read "none", not be mislabelled "privacy mode".
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": 0.0, "event_type": "mouse_down", "x": 5, "y": 5},
+        {"timestamp": 0.5, "event_type": "mouse_down", "x": 9, "y": 9},
+    ])
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    a.calculate_statistics()
+    out = _render(a.print_summary)
+    assert "none" in out
+    assert "privacy mode" not in out
+
+
+def test_render_batch_table_lists_sessions_and_footer(tmp_path):
+    from interlog.cli import render_batch_table
+    from interlog.analyzer import batch_analyze
+    for name in ("s1", "s2"):
+        _write_events(tmp_path / name / "events.csv", [
+            {"timestamp": 0.0, "event_type": "mouse_down", "x": 1, "y": 1},
+            {"timestamp": 1.0, "event_type": "mouse_down", "x": 9, "y": 9},
+        ])
+    rows = batch_analyze(tmp_path)
+    out = _render(lambda con: render_batch_table(con, rows, tmp_path))
+    assert "s1" in out and "s2" in out
+    assert "mean ± SD" in out
+
+
 # --- new movement / input metrics ------------------------------------------
 
 def _click_move_stream(moves):
