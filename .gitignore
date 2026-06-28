@@ -34,3 +34,5 @@ ROADMAP.md
 
 # Test cache
 .pytest_cache/
+.coverage
+htmlcov/

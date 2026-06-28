@@ -26,7 +26,7 @@ jobs:
       - name: Byte-compile
         run: python -m compileall src
       - name: Tests
-        run: pytest -q
+        run: pytest -q --cov=interlog --cov-report=term-missing
 
   lint:
     name: lint (ruff + mypy)

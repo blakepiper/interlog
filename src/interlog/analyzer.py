@@ -26,6 +26,7 @@ import csv
 import json
 import math
 import statistics
+import warnings
 from collections import defaultdict
 from datetime import timedelta
 from pathlib import Path
@@ -1000,8 +1001,10 @@ def batch_analyze(data_dir):
     """Walk all sessions in data_dir and return a list of stats dicts.
 
     Each dict has the session name and a flat set of key metrics drawn from
-    InteractionAnalyzer.calculate_statistics(). Sessions that cannot be read
-    are silently skipped.
+    InteractionAnalyzer.calculate_statistics(). Sessions with no events.csv or
+    no events are skipped quietly; a session that errors during analysis is
+    skipped with a warning naming it, so one bad session doesn't abort the batch
+    while still being surfaced rather than silently dropped.
     """
     data_dir = Path(data_dir)
     rows = []
@@ -1033,6 +1036,10 @@ def batch_analyze(data_dir):
                 "modality_switches_per_minute": s["modality_switches_per_minute"],
                 "interkey_interval_cv": s["interkey_interval_cv"],
             })
-        except Exception:
+        except Exception as e:
+            warnings.warn(
+                f"skipping session '{session_dir.name}': analysis failed ({e})",
+                stacklevel=2,
+            )
             continue
     return rows

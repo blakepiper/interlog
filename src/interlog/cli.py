@@ -45,7 +45,7 @@ def _open_in_os(path):
         else:
             subprocess.Popen(["xdg-open", str(path)],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
+    except OSError:
         pass
 
 
@@ -409,7 +409,7 @@ def _cmd_list(args):
             continue
         try:
             meta = json.loads(meta_file.read_text(encoding="utf-8"))
-        except Exception:
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             continue
 
         sessions.append({
