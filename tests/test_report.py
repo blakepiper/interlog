@@ -18,7 +18,8 @@ def test_build_report_creates_html(tmp_path, write_events):
     output = build_report(tmp_path)
     assert output.exists()
     html = output.read_text(encoding="utf-8")
-    assert "InterLog Report" in html
+    assert "Session readout" in html
+    assert "Interaction trace" in html
     assert "<svg" in html
     assert "Interaction Signals" in html
     assert "Struggle" not in html

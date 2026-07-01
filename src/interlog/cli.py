@@ -349,9 +349,9 @@ def _cmd_heatmap(args):
                 sigma=args.sigma,
                 frame_at=args.frame_at,
             )
-        except ImportError:
-            console.print("[red]Error:[/red] heatmap requires optional dependencies.")
-            console.print("  [dim]Install with: pip install 'interlog[heatmap]'[/dim]")
+        except ImportError as e:
+            console.print(f"[red]Error:[/red] heatmap dependency failed to import ({e}).")
+            console.print("  [dim]Reinstall InterLog from the repo: pip install .[/dim]")
             return 1
         except (FileNotFoundError, ValueError) as e:
             console.print(f"[red]Error:[/red] {e}")

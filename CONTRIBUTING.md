@@ -33,8 +33,9 @@ See below for development setup and guidelines.
 git clone https://github.com/blakepiper/interlog.git
 cd interlog
 
-# Install in editable mode with dev + heatmap dependencies
-pip install -e ".[dev,heatmap]"
+# Install in editable mode with dev dependencies
+# (matplotlib/numpy/Pillow for the heatmap ship with the base install)
+pip install -e ".[dev]"
 
 # Confirm the environment is healthy
 interlog doctor
@@ -125,7 +126,7 @@ python tools/capture_viewer_gif.py         # docs/img/viewer.gif
 InterLog is designed to be:
 - **Free and open-source** — No paywalls, no accounts, no cloud
 - **Simple** — Researchers should be able to use it in 2 minutes
-- **Privacy-focused** — All data stays local
+- **Local-only** — No networking or telemetry; all data stays on your machine
 - **Minimal dependencies** — Easy to install and maintain
 - **Cross-platform** — Works on Windows, Mac, Linux
 

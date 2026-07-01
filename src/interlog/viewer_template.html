@@ -3,89 +3,197 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>InterLog Viewer</title>
+<title>InterLog — Session Viewer</title>
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    color-scheme: dark;
+    --ink:#0A0C10; --ink2:#0E131B; --panel:#121824;
+    --line:#1F2732; --line-soft:#161d27;
+    --signal:#46E0B8; --alert:#FF5A47; --cursor:#FFB23E;
+    --text:#E6EBF2; --text2:#9AA7B8; --muted:#61707F;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
   * { box-sizing: border-box; }
-  body {
-    margin: 0; background: #14161a; color: #e6e8eb;
-    font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  body { margin:0; background:var(--ink); color:var(--text);
+    font:14px/1.5 var(--sans); -webkit-font-smoothing:antialiased; }
+  :focus-visible { outline:2px solid var(--signal); outline-offset:2px; border-radius:6px; }
+  button { font-family:inherit; }
+
+  /* shared centered gutters for header / content / footer */
+  .bezel, main, .plate { padding-inline: max(24px, calc((100% - 1400px) / 2)); }
+
+  /* header */
+  .bezel { display:flex; align-items:center; gap:14px; flex-wrap:wrap; row-gap:10px;
+    padding-block:16px; border-bottom:1px solid var(--line); }
+  .brand { display:flex; align-items:center; gap:9px; }
+  .mark { width:11px; height:11px; background:var(--signal); border-radius:3px;
+    transform:rotate(45deg); box-shadow:0 0 12px rgba(70,224,184,.6); }
+  .wordmark { font-size:16px; font-weight:700; letter-spacing:-.01em; }
+  .sep { width:1px; height:20px; background:var(--line); }
+  .session-name { color:var(--text2); font-size:13px; min-width:0;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .gauges { display:flex; align-items:center; gap:24px; margin-left:auto; }
+  .gauge { display:flex; flex-direction:column; align-items:flex-end; line-height:1.1; }
+  .gauge + .gauge { padding-left:24px; border-left:1px solid var(--line); }
+  .g-val { font-size:18px; font-weight:650; font-variant-numeric:tabular-nums; }
+  .gauge.alert .g-val { color:var(--alert); }
+  .g-lab { margin-top:5px; font-size:10px; font-weight:600; letter-spacing:.09em;
+    text-transform:uppercase; color:var(--muted); }
+
+  /* layout: video + log side by side, trace full width below */
+  main { display:flex; flex-direction:column; gap:20px; padding-block:22px; }
+  .top { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:20px; align-items:stretch; }
+  .stage { min-width:0; display:flex; flex-direction:column; }
+
+  /* video */
+  .screen { position:relative; width:100%; aspect-ratio:16/9; background:#000;
+    border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .screen video { width:100%; height:100%; display:block; object-fit:contain; background:#000; }
+  .no-video { position:absolute; inset:0; display:flex; align-items:center;
+    justify-content:center; text-align:center; padding:28px; background:var(--ink2); }
+  .nv-inner { max-width:420px; }
+  .nv-title { font-size:17px; font-weight:600; margin-bottom:10px; }
+  .nv-sub { font-size:13px; color:var(--text2); line-height:1.65; margin-bottom:22px; }
+
+  .btn { display:inline-flex; align-items:center; gap:7px; cursor:pointer; user-select:none;
+    font-size:13px; font-weight:600; color:#06251E; background:var(--signal);
+    padding:10px 18px; border-radius:9px; border:0; transition:filter .15s; }
+  .btn:hover { filter:brightness(1.07); }
+  .btn.ghost { background:transparent; color:var(--text2); border:1px solid var(--line); }
+  .btn.ghost:hover { background:var(--ink2); color:var(--text); filter:none; }
+
+  /* controls */
+  .controls { display:flex; align-items:center; gap:16px; margin-top:16px; flex-wrap:wrap; }
+  .field { display:inline-flex; align-items:center; gap:10px; padding:7px 13px;
+    border:1px solid var(--line); border-radius:9px; background:var(--ink2); }
+  .field-lab { font-size:11px; font-weight:600; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--muted); }
+  .field input { width:58px; background:transparent; color:var(--text); border:0;
+    font:inherit; font-size:14px; text-align:right; font-variant-numeric:tabular-nums; }
+  .field input:focus { outline:none; }
+  .field-unit { font-size:13px; color:var(--muted); }
+  .hint { color:var(--muted); font-size:12px; }
+
+  /* event log */
+  .log { display:flex; flex-direction:column; background:var(--ink2);
+    border:1px solid var(--line); border-radius:12px; padding:16px 16px 14px; min-height:0; }
+  .log-head { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:12px; }
+  .log-head .h { font-size:11px; font-weight:600; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--text2); }
+  .log-count { font-size:11px; color:var(--muted); }
+  .log-body { display:flex; flex-direction:column; gap:6px; overflow:auto; flex:1 1 auto; min-height:0; }
+  .entry { display:grid; grid-template-columns:auto 8px 1fr; align-items:center; gap:11px;
+    padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:var(--ink);
+    cursor:pointer; transition:border-color .12s, background .12s; }
+  .entry:hover { border-color:var(--signal); background:#0d1620; }
+  .entry.alert:hover { border-color:var(--alert); }
+  .entry .ts { font-size:13px; color:var(--text2); font-variant-numeric:tabular-nums; }
+  .entry .dot { width:8px; height:8px; border-radius:50%; background:var(--signal); }
+  .entry.alert .dot { background:var(--alert); box-shadow:0 0 8px var(--alert); }
+  .entry .lab { font-size:13px; color:var(--text2); }
+  .entry.dim { opacity:.5; }
+  .log .hint { margin-top:12px; }
+
+  /* interaction trace (full width) */
+  .scope { padding:16px 18px 12px; border:1px solid var(--line);
+    border-radius:12px; background:var(--ink2); }
+  .scope-cap { display:flex; align-items:center; justify-content:space-between;
+    gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+  .scope-title { font-size:11px; font-weight:600; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--text2); }
+  .scope-legend { display:flex; gap:18px; }
+  .scope-legend i { font-style:normal; display:inline-flex; align-items:center; gap:7px;
+    font-size:12px; color:var(--muted); }
+  .scope-legend i::before { content:""; width:9px; height:9px; border-radius:2px; background:currentColor; }
+  .lg-signal { color:var(--signal); } .lg-alert { color:var(--alert); } .lg-cursor { color:var(--cursor); }
+  .scope-legend i span { color:var(--muted); }
+  canvas#timeline { width:100%; height:150px; display:block; cursor:crosshair; }
+
+  /* footer */
+  .plate { padding-block:16px; border-top:1px solid var(--line);
+    color:var(--muted); font-size:12px; }
+  .plate b { color:var(--text2); font-weight:600; }
+  .plate a { color:var(--muted); }
+  .plate a:hover { color:var(--signal); }
+
+  @media (max-width:880px) {
+    .top { grid-template-columns:1fr; }
+    .gauges { gap:18px; }
+    .gauge + .gauge { padding-left:18px; }
   }
-  header { padding: 14px 18px; border-bottom: 1px solid #262a31; }
-  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
-  header .meta { color: #8b929c; font-size: 12px; margin-top: 2px; }
-  main { display: grid; grid-template-columns: 1fr 280px; gap: 16px; padding: 16px 18px; }
-  .video-pane { min-width: 0; }
-  video { width: 100%; background: #000; border-radius: 8px; aspect-ratio: 16/9; }
-  .no-video {
-    width: 100%; aspect-ratio: 16/9; border: 1px dashed #39404a; border-radius: 8px;
-    display: flex; align-items: center; justify-content: center; text-align: center;
-    color: #8b929c; padding: 20px;
-  }
-  .controls { display: flex; align-items: center; gap: 14px; margin: 12px 0 6px; flex-wrap: wrap; }
-  .controls label { color: #b7bdc6; font-size: 12px; }
-  input[type="number"] { width: 76px; background: #1c1f25; color: #e6e8eb;
-    border: 1px solid #39404a; border-radius: 6px; padding: 4px 6px; }
-  input[type="file"] { color: #b7bdc6; font-size: 12px; }
-  .timeline-wrap { margin-top: 8px; }
-  canvas { width: 100%; height: 84px; display: block; background: #1a1d22;
-    border-radius: 6px; cursor: pointer; }
-  .legend { display: flex; gap: 16px; margin-top: 6px; color: #8b929c; font-size: 11px; }
-  .legend span::before { content: "■"; margin-right: 4px; }
-  .l-int::before { color: #4f8cff; }
-  .l-rage::before { color: #ff5d5d; }
-  .l-play::before { color: #ffd24a; }
-  aside { border-left: 1px solid #262a31; padding-left: 16px; }
-  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
-    color: #8b929c; margin: 0 0 8px; }
-  .spot { display: flex; justify-content: space-between; align-items: center;
-    padding: 7px 9px; border: 1px solid #262a31; border-radius: 6px; margin-bottom: 6px;
-    cursor: pointer; background: #1a1d22; }
-  .spot:hover { border-color: #4f8cff; }
-  .spot .t { font-variant-numeric: tabular-nums; color: #cfd4db; }
-  .spot .tag { font-size: 11px; color: #8b929c; }
-  .spot.rage .tag { color: #ff7d7d; }
-  .spot.dim { opacity: 0.5; }
-  .hint { color: #6f7680; font-size: 11px; margin-top: 4px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>InterLog Viewer — <span id="session"></span></h1>
-  <div class="meta" id="metaline"></div>
+<header class="bezel">
+  <div class="brand">
+    <span class="mark"></span>
+    <span class="wordmark">InterLog</span>
+  </div>
+  <div class="sep"></div>
+  <div class="session-name" id="session"></div>
+  <div class="gauges" id="gauges"></div>
 </header>
+
 <main>
-  <div class="video-pane">
-    <video id="video" controls playsinline style="display:none"></video>
-    <div class="no-video" id="novideo">
-      Load your screen recording to sync it with the interaction timeline.<br>
-      (The video stays on your machine — nothing is uploaded.)
-    </div>
+  <div class="top">
+    <div class="stage">
+      <div class="screen">
+        <video id="video" controls playsinline style="display:none"></video>
+        <div class="no-video" id="novideo">
+          <div class="nv-inner">
+            <div class="nv-title">Load your screen recording</div>
+            <div class="nv-sub">
+              Sync it against the interaction trace, then click the trace or a log
+              entry to jump to that moment. The video stays on your machine —
+              nothing is uploaded.
+            </div>
+            <button type="button" class="btn" data-load>Choose recording…</button>
+          </div>
+        </div>
+      </div>
 
-    <div class="controls">
-      <span id="file-pick"><input type="file" id="videofile" accept="video/*"></span>
-      <label>Sync offset (s):
-        <input type="number" id="offset" step="0.1" value="0">
-      </label>
-      <span class="hint">video_time = event_time + offset · nudge until a known click lines up</span>
-    </div>
+      <input type="file" id="videofile" accept="video/*" hidden>
 
-    <div class="timeline-wrap">
-      <canvas id="timeline"></canvas>
-      <div class="legend">
-        <span class="l-int">interaction intensity</span>
-        <span class="l-rage">rage clicks</span>
-        <span class="l-play">playhead</span>
+      <div class="controls">
+        <button type="button" class="btn ghost" id="changeVideo" data-load style="display:none">
+          Change recording
+        </button>
+        <label class="field">
+          <span class="field-lab">Sync offset</span>
+          <input type="number" id="offset" step="0.1" value="0" aria-label="Sync offset in seconds">
+          <span class="field-unit">s</span>
+        </label>
+        <span class="hint">Nudge until a known click lines up with the video.</span>
       </div>
     </div>
+
+    <aside class="log">
+      <div class="log-head">
+        <span class="h">Event log</span>
+        <span class="log-count" id="log-count"></span>
+      </div>
+      <div id="spots" class="log-body"></div>
+      <span class="hint">Click an entry to jump the video there.</span>
+    </aside>
   </div>
 
-  <aside>
-    <h2>Hot spots</h2>
-    <div id="spots"></div>
-    <p class="hint">Click a hot spot or anywhere on the timeline to jump the video there.</p>
-  </aside>
+  <figure class="scope">
+    <figcaption class="scope-cap">
+      <span class="scope-title">Interaction trace</span>
+      <span class="scope-legend">
+        <i class="lg-signal"><span>activity</span></i>
+        <i class="lg-alert"><span>rage</span></i>
+        <i class="lg-cursor"><span>playhead</span></i>
+      </span>
+    </figcaption>
+    <canvas id="timeline" aria-label="Interaction intensity over time. Click to seek the video."></canvas>
+  </figure>
 </main>
+
+<footer class="plate">
+  <b>InterLog</b> — local interaction logging for HCI research ·
+  <a href="https://github.com/blakepiper/interlog">github.com/blakepiper/interlog</a>
+</footer>
 
 <script id="data">window.INTERLOG_DATA = __INTERLOG_DATA__;</script>
 <script>
@@ -93,38 +201,69 @@
   const D = window.INTERLOG_DATA;
   const video = document.getElementById("video");
   const novideo = document.getElementById("novideo");
+  const videofile = document.getElementById("videofile");
+  const changeVideo = document.getElementById("changeVideo");
   const canvas = document.getElementById("timeline");
   const ctx = canvas.getContext("2d");
   const offsetEl = document.getElementById("offset");
 
+  // Palette read from CSS so it never drifts from the stylesheet.
+  const css = getComputedStyle(document.documentElement);
+  const C = {};
+  for (const k of ["signal", "alert", "cursor", "line", "line-soft", "muted", "text2"]) {
+    C[k] = css.getPropertyValue("--" + k).trim();
+  }
+  const AXIS_FONT = "11px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+
+  // Scope layout state — declared up top so an early draw() (when a recording
+  // auto-loads via videoSrc) can't hit a temporal-dead-zone error and abort init.
+  const PAD_TOP = 18, PAD_BOTTOM = 6;
+  let hoverX = null;
+
   let offset = D.offset || 0;
   offsetEl.value = offset;
 
-  document.getElementById("session").textContent = D.session || "(session)";
-  document.getElementById("metaline").textContent =
-    `duration ${fmt(D.duration)} · ${D.markers.length} interactions · ${D.rageClicks.length} rage-click bursts`;
+  document.getElementById("session").textContent = D.session || "(unnamed session)";
+  document.getElementById("gauges").innerHTML =
+    gauge("Runtime", fmt(D.duration)) +
+    gauge("Interactions", D.markers.length.toLocaleString()) +
+    gauge("Rage", D.rageClicks.length, D.rageClicks.length > 0);
+
+  function gauge(label, value, alert) {
+    return `<div class="gauge${alert ? " alert" : ""}">` +
+           `<span class="g-val">${value}</span><span class="g-lab">${label}</span></div>`;
+  }
 
   function fmt(s) {
     s = Math.max(0, s || 0);
     const m = Math.floor(s / 60), sec = (s % 60);
     return `${m}:${sec.toFixed(1).padStart(4, "0")}`;
   }
+  function fmtShort(s) {
+    const m = Math.floor(s / 60), sec = Math.round(s % 60);
+    return `${m}:${String(sec).padStart(2, "0")}`;
+  }
 
-  // ---- Auto-load video when served via HTTP ----
-  if (D.videoSrc) {
-    video.src = D.videoSrc;
+  function videoLoaded() { return video.style.display !== "none"; }
+
+  function showVideo() {
     video.style.display = "block";
     novideo.style.display = "none";
-    document.getElementById("file-pick").style.display = "none";
+    changeVideo.style.display = "inline-flex";
+    draw();
   }
 
   // ---- Video loading (local file, no upload) ----
-  document.getElementById("videofile").addEventListener("change", function (e) {
+  document.querySelectorAll("[data-load]").forEach(el =>
+    el.addEventListener("click", () => videofile.click()));
+
+  if (D.videoSrc) { video.src = D.videoSrc; showVideo(); }
+
+  videofile.addEventListener("change", function (e) {
     const file = e.target.files[0];
     if (!file) return;
     video.src = URL.createObjectURL(file);
-    video.style.display = "block";
-    novideo.style.display = "none";
+    showVideo();
   });
 
   offsetEl.addEventListener("input", function () {
@@ -132,7 +271,7 @@
     draw();
   });
 
-  // ---- Timeline rendering ----
+  // ---- Scope rendering ----
   function resize() {
     const ratio = window.devicePixelRatio || 1;
     canvas.width = canvas.clientWidth * ratio;
@@ -141,42 +280,132 @@
     draw();
   }
 
-  function xFor(t) {
-    const dur = D.duration || 1;
-    return (t / dur) * canvas.clientWidth;
+  function xFor(t) { return (t / (D.duration || 1)) * canvas.clientWidth; }
+
+  function niceStep(dur) {
+    const target = dur / 6;
+    for (const s of [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900]) if (target <= s) return s;
+    return 1800;
+  }
+  function bucketAt(t) {
+    for (const b of D.buckets) if (t >= b.t0 && t < b.t1) return b;
+    return null;
   }
 
   function draw() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     ctx.clearRect(0, 0, w, h);
+    const top = PAD_TOP, bottom = h - PAD_BOTTOM, ph = bottom - top;
 
-    // intensity bars
+    // graticule — horizontal divisions
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = C["line-soft"];
+    for (let i = 1; i <= 3; i++) {
+      const y = Math.round(top + ph * i / 4) + 0.5;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+    // graticule — time divisions + ruler labels
+    ctx.fillStyle = C.muted;
+    ctx.font = AXIS_FONT;
+    ctx.textBaseline = "top";
+    const step = niceStep(D.duration || 1);
+    for (let t = step; t < (D.duration || 0); t += step) {
+      const x = Math.round(xFor(t)) + 0.5;
+      ctx.strokeStyle = C["line-soft"];
+      ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+      ctx.fillText(fmtShort(t), x + 4, 2);
+    }
+    // baseline
+    ctx.strokeStyle = C.line;
+    ctx.beginPath(); ctx.moveTo(0, bottom + 0.5); ctx.lineTo(w, bottom + 0.5); ctx.stroke();
+
+    // waveform (filled area + glowing stroke)
     const maxInt = Math.max(1, ...D.buckets.map(b => b.total));
-    for (const b of D.buckets) {
-      const x0 = xFor(b.t0), x1 = xFor(b.t1);
-      const bh = (b.total / maxInt) * (h - 14);
-      ctx.fillStyle = "#3a5a9f";
-      ctx.fillRect(x0, h - bh, Math.max(1, x1 - x0 - 1), bh);
+    if (D.buckets.length) {
+      const pts = D.buckets.map(b => ({
+        x: xFor((b.t0 + b.t1) / 2),
+        y: bottom - (b.total / maxInt) * ph,
+      }));
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, bottom);
+      for (const p of pts) ctx.lineTo(p.x, p.y);
+      ctx.lineTo(pts[pts.length - 1].x, bottom);
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(0, top, 0, bottom);
+      grad.addColorStop(0, "rgba(70,224,184,0.26)");
+      grad.addColorStop(1, "rgba(70,224,184,0.02)");
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (const p of pts) ctx.lineTo(p.x, p.y);
+      ctx.strokeStyle = C.signal;
+      ctx.lineWidth = 1.5;
+      ctx.shadowColor = C.signal;
+      ctx.shadowBlur = 6;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
     }
 
-    // rage-click markers
-    ctx.fillStyle = "#ff5d5d";
+    // rage alert ticks
     for (const r of D.rageClicks) {
       const x = xFor(r.t);
-      ctx.fillRect(x - 1, 0, 2, h);
+      ctx.strokeStyle = C.alert;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.moveTo(x + 0.5, top); ctx.lineTo(x + 0.5, bottom); ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = C.alert;
+      ctx.shadowColor = C.alert; ctx.shadowBlur = 6;
+      ctx.beginPath(); ctx.arc(x, top, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
     }
 
-    // playhead (logical time = video.currentTime - offset)
-    if (video.style.display !== "none" && !isNaN(video.currentTime)) {
+    // hover crosshair + readout
+    if (hoverX != null) {
+      const t = (hoverX / w) * (D.duration || 0);
+      ctx.strokeStyle = C.text2;
+      ctx.globalAlpha = 0.5;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(hoverX + 0.5, top); ctx.lineTo(hoverX + 0.5, bottom); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      const b = bucketAt(t);
+      const label = `${fmtShort(t)} · ${b ? b.total : 0} events`;
+      ctx.font = AXIS_FONT;
+      const tw = ctx.measureText(label).width + 14;
+      const bx = Math.min(Math.max(hoverX - tw / 2, 2), w - tw - 2);
+      ctx.fillStyle = "rgba(10,12,16,0.92)";
+      ctx.fillRect(bx, top + 2, tw, 17);
+      ctx.strokeStyle = C.line;
+      ctx.strokeRect(bx + 0.5, top + 2.5, tw, 17);
+      ctx.fillStyle = C.text2;
+      ctx.fillText(label, bx + 7, top + 5);
+    }
+
+    // playhead cursor (amber, tracks the video)
+    if (videoLoaded() && !isNaN(video.currentTime)) {
       const lt = video.currentTime - offset;
       if (lt >= 0 && lt <= D.duration) {
         const x = xFor(lt);
-        ctx.fillStyle = "#ffd24a";
-        ctx.fillRect(x - 1, 0, 2, h);
+        ctx.strokeStyle = C.cursor;
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = C.cursor; ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = C.cursor;
+        ctx.beginPath();
+        ctx.moveTo(x - 4, 0); ctx.lineTo(x + 4, 0); ctx.lineTo(x, 6); ctx.closePath(); ctx.fill();
       }
     }
   }
 
+  canvas.addEventListener("mousemove", function (e) {
+    const rect = canvas.getBoundingClientRect();
+    hoverX = e.clientX - rect.left;
+    draw();
+  });
+  canvas.addEventListener("mouseleave", function () { hoverX = null; draw(); });
   canvas.addEventListener("click", function (e) {
     const rect = canvas.getBoundingClientRect();
     const frac = (e.clientX - rect.left) / rect.width;
@@ -184,43 +413,54 @@
   });
 
   function seekTo(logicalTime) {
-    if (video.style.display === "none") return;
+    if (!videoLoaded()) return;
     video.currentTime = Math.max(0, logicalTime + offset);
     video.play().catch(() => {});
   }
 
-  // ---- Hot spots list ----
-  function buildSpots() {
-    const spots = [];
-    for (const r of D.rageClicks) spots.push({ t: r.t, label: `rage click ×${r.count}`, rage: true });
+  // ---- Event log ----
+  function buildLog() {
+    const entries = [];
+    for (const r of D.rageClicks)
+      entries.push({ t: r.t, label: `rage burst ×${r.count}`, alert: true });
     const top = [...D.buckets].sort((a, b) => b.total - a.total).slice(0, 6);
     for (const b of top) {
       if (b.total <= 0) continue;
-      // Skip if a rage click already covers this window
       const covered = D.rageClicks.some(r => r.t >= b.t0 && r.t < b.t1);
-      spots.push({ t: b.t0, label: `peak · ${b.total} events`, rage: false, dim: covered });
+      entries.push({ t: b.t0, label: `peak · ${b.total} events`, alert: false, dim: covered });
     }
-    spots.sort((a, b) => a.t - b.t);
+    entries.sort((a, b) => a.t - b.t);
 
     const host = document.getElementById("spots");
+    const count = document.getElementById("log-count");
     host.innerHTML = "";
-    if (!spots.length) { host.innerHTML = '<p class="hint">No notable activity detected.</p>'; return; }
-    for (const s of spots) {
+    count.textContent = entries.length ? `${entries.length} entries` : "";
+    if (!entries.length) {
+      host.innerHTML = '<span class="hint">No anomalies logged for this session.</span>';
+      return;
+    }
+    for (const s of entries) {
       const el = document.createElement("div");
-      el.className = "spot" + (s.rage ? " rage" : "") + (s.dim ? " dim" : "");
-      el.innerHTML = `<span class="t">${fmt(s.t)}</span><span class="tag">${s.label}</span>`;
+      el.className = "entry" + (s.alert ? " alert" : "") + (s.dim ? " dim" : "");
+      el.innerHTML =
+        `<span class="ts">${fmt(s.t)}</span><span class="dot"></span><span class="lab">${s.label}</span>`;
       el.addEventListener("click", () => seekTo(s.t));
       host.appendChild(el);
     }
   }
 
-  // animate playhead while video plays
-  function loop() { draw(); requestAnimationFrame(loop); }
+  // Redraw the cursor only while the video is actually playing (idle = no animation).
+  let rafId = null;
+  function tick() { draw(); rafId = requestAnimationFrame(tick); }
+  function stopTick() { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } draw(); }
+  video.addEventListener("play", () => { if (!rafId) tick(); });
+  video.addEventListener("pause", stopTick);
+  video.addEventListener("ended", stopTick);
+  ["seeked", "loadedmetadata", "timeupdate"].forEach(ev => video.addEventListener(ev, draw));
 
   window.addEventListener("resize", resize);
-  buildSpots();
+  buildLog();
   resize();
-  loop();
 })();
 </script>
 </body>

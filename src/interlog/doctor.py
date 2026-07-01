@@ -42,7 +42,7 @@ def _check_pynput(console):
         return True
     except ImportError:
         _fail(console, "pynput not installed")
-        console.print("       [dim]Run: pip install interlog   (or: pip install pynput)[/dim]")
+        console.print("       [dim]Reinstall InterLog from the repo: pip install .[/dim]")
         return False
 
 
@@ -71,9 +71,9 @@ def _check_heatmap_deps(console):
         except ImportError:
             missing.append(pkg)
     if missing:
-        _warn(console, f"Heatmap deps missing: {', '.join(missing)}  "
-              f"[dim](optional — needed for 'interlog heatmap')[/dim]")
-        console.print("       [dim]pip install 'interlog[heatmap]'[/dim]")
+        _fail(console, f"Heatmap deps missing: {', '.join(missing)}  "
+              f"[dim](required — needed for 'interlog heatmap')[/dim]")
+        console.print("       [dim]Reinstall InterLog from the repo: pip install .[/dim]")
     else:
         try:
             mpl_v = importlib.metadata.version("matplotlib")

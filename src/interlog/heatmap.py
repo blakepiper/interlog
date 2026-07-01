@@ -1,8 +1,8 @@
 """Mouse movement and click heatmap for InterLog sessions.
 
 Renders a density heatmap of pointer movement overlaid with click markers,
-using PIL for the Gaussian blur (avoids a scipy dependency) and matplotlib
-for compositing and output.
+using a small separable Gaussian blur in numpy (avoids a scipy dependency) and
+matplotlib for compositing and output.
 """
 
 import shutil
@@ -56,6 +56,25 @@ def _heatmap_cmap():
     return LinearSegmentedColormap.from_list("interlog_heat", stops)
 
 
+def _gaussian_blur(grid, sigma):
+    """Separable Gaussian blur in float space.
+
+    Blurring sparse point data in 8-bit space (as PIL's GaussianBlur does)
+    underflows a heavy blur to all-zero — a single impulse spread over a large
+    sigma drops well below 1/255. Doing it in float keeps the signal so the
+    density field survives for light sessions.
+    """
+    import numpy as np
+
+    radius = max(1, int(round(3 * sigma)))
+    x = np.arange(-radius, radius + 1, dtype=np.float32)
+    kernel = np.exp(-(x * x) / (2.0 * sigma * sigma))
+    kernel /= kernel.sum()
+    out = np.apply_along_axis(lambda row: np.convolve(row, kernel, mode="same"), 1, grid)
+    out = np.apply_along_axis(lambda col: np.convolve(col, kernel, mode="same"), 0, out)
+    return out.astype(np.float32)
+
+
 def build_heatmap(session_path, output=None, sigma=25, frame_at=0.25):
     """Build a mouse movement + click heatmap PNG for a session.
 
@@ -70,7 +89,7 @@ def build_heatmap(session_path, output=None, sigma=25, frame_at=0.25):
     """
     import numpy as np
     import matplotlib.pyplot as plt
-    from PIL import Image, ImageFilter
+    from PIL import Image
 
     session_path = Path(session_path)
     if session_path.is_dir():
@@ -138,17 +157,21 @@ def build_heatmap(session_path, output=None, sigma=25, frame_at=0.25):
     clicks_rage = [(e["x"] - ox, e["y"] - oy) for e in click_events
                    if e["timestamp"] in rage_ts]
 
-    # Build density grid
-    heat = np.zeros((H, W), dtype=np.float32)
+    # Build the density grid at reduced resolution (a smooth heatmap needs no
+    # more), blur it in float space, then normalize to the post-blur peak so the
+    # colormap spans its full range regardless of how sparse the session is.
+    grid_max = 480
+    scale = min(1.0, grid_max / max(W, H))
+    gw, gh = max(1, round(W * scale)), max(1, round(H * scale))
+    heat = np.zeros((gh, gw), dtype=np.float32)
     if move_events:
-        xs = np.clip([e["x"] - ox for e in move_events], 0, W - 1).astype(int)
-        ys = np.clip([e["y"] - oy for e in move_events], 0, H - 1).astype(int)
+        xs = np.clip((np.array([e["x"] for e in move_events]) - ox) * scale, 0, gw - 1).astype(int)
+        ys = np.clip((np.array([e["y"] for e in move_events]) - oy) * scale, 0, gh - 1).astype(int)
         np.add.at(heat, (ys, xs), 1.0)
+        heat = _gaussian_blur(heat, max(1.0, sigma * scale))
         peak = heat.max()
         if peak > 0:
-            pil_h = Image.fromarray((heat * (255.0 / peak)).astype(np.uint8), mode="L")
-            pil_h = pil_h.filter(ImageFilter.GaussianBlur(radius=sigma))
-            heat = np.array(pil_h, dtype=np.float32) / 255.0
+            heat /= peak
 
     # Render
     fig_w = 14

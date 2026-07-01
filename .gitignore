@@ -9,8 +9,9 @@ dist/
 venv/
 env/
 
-# InterLog session output (don't commit captured sessions)
+# InterLog session output (don't commit captured or demo sessions)
 interlog-data/
+interlog-demo/
 *_events.csv
 *_metadata.json
 *_summary.csv

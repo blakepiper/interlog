@@ -7,9 +7,6 @@ git clone https://github.com/blakepiper/interlog.git
 cd interlog
 pip install .
 
-# Optional: add heatmap support (matplotlib, numpy, Pillow)
-pip install ".[heatmap]"
-
 # Confirm everything is working
 interlog doctor
 ```
@@ -150,8 +147,10 @@ confusion. Check `longest_pause_seconds` in the summary.
 ## Troubleshooting
 
 **`interlog heatmap` fails with ImportError**
+Its dependencies (matplotlib, numpy, Pillow) ship with InterLog, so this usually
+means a broken or partial install. Reinstall from the repo:
 ```bash
-pip install ".[heatmap]"
+pip install .
 ```
 
 **"Permission denied" on macOS**

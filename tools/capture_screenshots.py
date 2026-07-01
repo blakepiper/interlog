@@ -207,12 +207,13 @@ def _render_comparison_chart(rows, out_path):
     eff = [r["mean_path_efficiency"] or 0 for r in rows]
     y = range(len(rows))
 
-    bg, fg, dim, cyan, amber = "#0d0d0d", "#e2e8f0", "#64748b", "#22d3ee", "#fbbf24"
+    # InterLog instrument palette (matches the viewer/report scope).
+    bg, fg, dim, signal, amber = "#0A0C10", "#E6EBF2", "#5C6A7D", "#46E0B8", "#FFB23E"
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 0.7 * len(rows) + 1.6), dpi=120)
     fig.patch.set_facecolor(bg)
 
     for ax, vals, title, color, fmt in (
-        (ax1, cpm, "Clicks / min", cyan, "{:.0f}"),
+        (ax1, cpm, "Clicks / min", signal, "{:.0f}"),
         (ax2, eff, "Path efficiency", amber, "{:.2f}"),
     ):
         ax.set_facecolor(bg)
@@ -224,7 +225,7 @@ def _render_comparison_chart(rows, out_path):
         ax.tick_params(colors=dim, length=0)
         for spine in ax.spines.values():
             spine.set_visible(False)
-        ax.grid(axis="x", color="#1e293b", zorder=0)
+        ax.grid(axis="x", color="#1C2632", zorder=0)
         for yi, v in zip(y, vals):
             ax.text(v, yi, "  " + fmt.format(v), va="center", color=fg, fontsize=10)
         if ax is ax2:

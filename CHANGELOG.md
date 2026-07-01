@@ -66,6 +66,27 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `mypy` type checking in CI.
 
 ### Changed
+- **Heatmap dependencies are no longer optional.** `matplotlib`, `numpy`, and
+  `Pillow` are now core dependencies installed by `pip install .`, so
+  `interlog heatmap` works out of the box. The `[heatmap]` extra is gone; `doctor`
+  now treats missing heatmap deps as a broken install rather than an optional
+  warning.
+- **Redesigned the viewer and HTML report around a shared visual language.** Both
+  use a clean system sans typography (no web fonts — the viewer stays fully
+  offline) with tabular numerics for readouts, on a deep dark ground with a
+  strictly semantic palette (mint = activity, red = rage/friction, amber =
+  playhead cursor). The interaction timeline is the signature element in both — a
+  filled intensity trace on a measurement graticule with a time ruler and glowing
+  rage ticks. The viewer lays out the video and a timestamped **event log** side
+  by side with the full-width trace below, and adds a live scanning cursor, a
+  hover readout, and a header gauge cluster; the report leads with the trace as
+  its hero and renders metrics as gauge cells. Idle animation was dropped — the
+  viewer only redraws the cursor while the video is playing.
+- **The viewer now carries InterLog branding** — a header wordmark and a footer
+  attribution line, consistent with `report.html`.
+- **Documentation is scoped to a clone-and-install repo, not a PyPI package.**
+  Removed references to installing/releasing via PyPI (`pip install interlog`,
+  `pip install ".[heatmap]"`); install is `git clone` + `pip install .`.
 - The recorder now builds metadata via a testable `_build_metadata()` and reuses
   `interlog.sync.event_offset` for the alignment offset.
 - `analyze` and `analyze --batch` rendering accept an injectable console
@@ -74,6 +95,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   viewer, report, and the JSON export.
 
 ### Fixed
+- **Heatmap density cloud no longer renders blank for light sessions.** The
+  movement density was Gaussian-blurred in 8-bit space, where a large `sigma`
+  spread each sparse point below 1/255 and the whole field underflowed to zero —
+  leaving only the white click dots with no color. The blur now runs in float
+  (a small separable numpy Gaussian on a downscaled grid) and is normalized to
+  the post-blur peak, so the colormap spans its full low→high range regardless of
+  session density.
+- The viewer now has a clear, prominent "Choose recording…" button in the
+  no-video placeholder (with a "Change recording" control once loaded), instead of
+  a small native file input tucked beside the sync-offset field, so loading a
+  local recording in the browser is obvious.
 - Rage-click detection now chains the distance check click-to-click instead of
   anchoring every click to the seed, so a burst that drifts across the screen
   (each click near the last, the last far from the first) still registers as one
