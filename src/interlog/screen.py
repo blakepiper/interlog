@@ -28,6 +28,8 @@ import threading
 import time
 from pathlib import Path
 
+from interlog.security import lock_down
+
 
 def ffmpeg_path():
     """Return the path to the ffmpeg executable, or None if not on PATH."""
@@ -390,6 +392,9 @@ class ScreenRecorder:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if self._live.is_set():
+                # The recording holds whatever is on screen; keep it owner-only
+                # for the whole capture, not just after the final remux.
+                lock_down(self.capture_file)
                 return time.monotonic()
             if self.proc.poll() is not None:
                 raise RuntimeError(self._error_message())
@@ -456,6 +461,7 @@ class ScreenRecorder:
                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=120,
             )
             if result.returncode == 0 and self.output_file.exists():
+                lock_down(self.output_file)
                 try:
                     self.capture_file.unlink()
                 except OSError:

@@ -24,6 +24,20 @@ def _console():
     return Console(highlight=False)
 
 
+def _validate_session_name(name):
+    """Reject session names that could escape the output directory.
+
+    ``--name`` flows straight into ``output_dir / name``; a name with a path
+    separator or a ``..`` segment could write outside the chosen directory.
+    Raises ValueError with a user-facing message; the caller turns it into a
+    clean CLI error rather than a stack trace.
+    """
+    segments = name.replace("\\", "/").split("/")
+    if len(segments) > 1 or ".." in segments:
+        raise ValueError("Session name can't contain path separators.")
+    return name
+
+
 def _positive_float(value):
     """argparse type for options that must be > 0 (e.g. --bucket-size)."""
     f = float(value)
@@ -256,6 +270,13 @@ Examples:
 
 def _cmd_record(args):
     from interlog.recorder import InteractionLogger
+
+    if args.name is not None:
+        try:
+            _validate_session_name(args.name)
+        except ValueError as e:
+            _console().print(f"[red]Error:[/red] {e}")
+            return 1
 
     logger = InteractionLogger(
         output_dir=args.output,
@@ -658,6 +679,7 @@ def _cmd_analyze_batch(args):
 def _analyze_text(analyzer, events_path, out_dir, console=None):
     """Reconstruct typed text and run local lexical analysis (default; privacy-gated)."""
     from interlog.analyzer import base_prefix
+    from interlog.security import lock_down
     from interlog.text_analysis import is_redacted, lexical_stats, reconstruct_text
 
     if console is None:
@@ -677,11 +699,13 @@ def _analyze_text(analyzer, events_path, out_dir, console=None):
     prefix = base_prefix(events_path)
     transcript_path = out_dir / f"{prefix}transcript.txt"
     transcript_path.write_text(text, encoding="utf-8")
+    lock_down(transcript_path)
 
     stats = lexical_stats(text)
     stats_path = out_dir / f"{prefix}text.json"
     with open(stats_path, "w", encoding="utf-8") as f:
         json.dump(stats, f, indent=2)
+    lock_down(stats_path)
 
     console.print(f"  [dim]Transcript [/dim]{transcript_path}")
     if stats["word_count"] > 0 and stats["top_keywords"]:

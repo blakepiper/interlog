@@ -32,6 +32,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from interlog import __version__
+from interlog.security import lock_down
 
 # Version of the summary.json structure (not the tool version). Bump on any
 # breaking change to the export's shape so downstream readers can adapt.
@@ -203,7 +204,8 @@ def detect_rage_clicks(clicks, time_window=1.0, distance_threshold=50):
     Args:
         clicks: Click events with timestamp/x/y, time-ordered.
         time_window: Window in seconds over which clicks are grouped.
-        distance_threshold: Max distance in pixels to count as the same area.
+        distance_threshold: Max distance in pixels between consecutive clicks in
+            a burst (chained, so a drifting burst still counts as one).
 
     Returns:
         One dict per burst with the seed click plus ``click_count`` and
@@ -224,10 +226,13 @@ def detect_rage_clicks(clicks, time_window=1.0, distance_threshold=50):
             continue
 
         first = window[0]
+        # Chain the distance check click-to-click rather than anchoring every
+        # click to the seed: a burst that drifts across the screen (each click
+        # near the last, but the last far from the first) is still one burst.
         same_area = all(
-            first["x"] is not None and c["x"] is not None
-            and math.hypot(c["x"] - first["x"], c["y"] - first["y"]) <= distance_threshold
-            for c in window[1:]
+            prev["x"] is not None and cur["x"] is not None
+            and math.hypot(cur["x"] - prev["x"], cur["y"] - prev["y"]) <= distance_threshold
+            for prev, cur in zip(window, window[1:])
         )
         if same_area:
             bursts.append({
@@ -771,6 +776,7 @@ class InteractionAnalyzer:
             for key, value in self.stats.items():
                 writer.writerow([key, value])
 
+        lock_down(output_file)
         return output_file
 
     def build_summary_export(self, metadata=None):
@@ -825,6 +831,7 @@ class InteractionAnalyzer:
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(self.build_summary_export(metadata), f, indent=2)
 
+        lock_down(output_file)
         return output_file
 
     def save_intensity(self, output_file=None, bucket_size=5.0):
@@ -842,6 +849,7 @@ class InteractionAnalyzer:
                 writer.writeheader()
                 writer.writerows(buckets)
 
+        lock_down(output_file)
         return output_file
 
     def _sparkline(self, bucket_size=5.0, width=52):

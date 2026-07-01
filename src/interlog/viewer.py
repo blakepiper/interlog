@@ -18,6 +18,7 @@ from interlog.analyzer import (
     mouse_down_clicks,
     read_session_metadata,
 )
+from interlog.security import lock_down
 
 _TEMPLATE = Path(__file__).parent / "viewer_template.html"
 _PLACEHOLDER = "__INTERLOG_DATA__"
@@ -88,6 +89,7 @@ def build_viewer(events_file, output=None, bucket_size=2.0, open_browser=True, v
             output = output / f"{base_prefix(events_file)}viewer.html"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(html, encoding="utf-8")
+    lock_down(output)
 
     if open_browser:
         webbrowser.open(output.resolve().as_uri())

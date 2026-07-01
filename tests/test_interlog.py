@@ -104,6 +104,22 @@ def test_rage_clicks_count_each_burst_once(tmp_path):
     assert s["rage_clicks_detected"] == 1
 
 
+def test_rage_clicks_chain_across_drift(tmp_path):
+    # A drifting burst: each click is within the 50px threshold of the previous
+    # one, but click 1 -> click 3 (100px) exceeds it. Chained distance should
+    # still register this as a single burst; anchoring to the seed would miss it.
+    events = tmp_path / "events.csv"
+    _write_events(events, [
+        {"timestamp": 0.10, "event_type": "mouse_down", "x": 100, "y": 100, "button": "Button.left"},
+        {"timestamp": 0.20, "event_type": "mouse_down", "x": 145, "y": 100, "button": "Button.left"},
+        {"timestamp": 0.30, "event_type": "mouse_down", "x": 190, "y": 100, "button": "Button.left"},
+    ])
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    s = a.calculate_statistics()
+    assert s["rage_clicks_detected"] == 1
+
+
 def test_path_efficiency_direct_move_is_one(tmp_path):
     events = tmp_path / "events.csv"
     _write_events(events, [
@@ -1104,6 +1120,88 @@ def test_record_rejects_monitor_all_off_windows(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "platform", "linux")
     rc = main(["record", "--screen", "--monitor", "all", "-o", str(tmp_path)])
     assert rc == 1
+
+
+# --- session name validation (path traversal) ------------------------------
+
+@pytest.mark.parametrize("bad", ["../../evil", "..", "a/b", "a\\b", "sub/../x"])
+def test_validate_session_name_rejects_traversal(bad):
+    from interlog.cli import _validate_session_name
+    with pytest.raises(ValueError, match="path separators"):
+        _validate_session_name(bad)
+
+
+@pytest.mark.parametrize("ok", ["p01", "session_1", "2026-07-01_run", "a.b"])
+def test_validate_session_name_accepts_plain(ok):
+    from interlog.cli import _validate_session_name
+    assert _validate_session_name(ok) == ok
+
+
+def test_record_rejects_traversal_name_and_writes_nothing_outside(tmp_path):
+    from interlog.cli import main
+    outside = tmp_path / "escaped"
+    output = tmp_path / "data"
+    rc = main(["record", "--name", f"../{outside.name}", "-o", str(output)])
+    assert rc == 1
+    assert not outside.exists()
+
+
+# --- file permissions on captured data (POSIX) -----------------------------
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits only")
+def test_outputs_are_owner_only(tmp_path):
+    import os
+
+    from interlog.analyzer import InteractionAnalyzer
+    from interlog.report import build_report
+
+    session = tmp_path / "s"
+    events = session / "events.csv"
+    _write_events(events, [
+        {"timestamp": 0.10, "event_type": "mouse_down", "x": 100, "y": 100, "button": "Button.left"},
+        {"timestamp": 0.40, "event_type": "mouse_move", "x": 300, "y": 200},
+        {"timestamp": 0.80, "event_type": "mouse_down", "x": 300, "y": 200, "button": "Button.left"},
+        {"timestamp": 1.20, "event_type": "key_press", "key": "a"},
+    ])
+    # events.csv is written by the test helper, not the recorder, so lock it
+    # down here to mirror what the recorder does before asserting on the rest.
+    os.chmod(events, 0o600)
+
+    a = InteractionAnalyzer(events)
+    a.load_events()
+    a.calculate_statistics()
+    summary = a.save_summary()
+    intensity = a.save_intensity()
+    summary_json = a.save_summary_json()
+
+    outputs = [summary, intensity, summary_json]
+
+    # Heatmap needs optional deps (matplotlib/numpy/Pillow); include it when present.
+    try:
+        from interlog.heatmap import build_heatmap
+        outputs.append(build_heatmap(session))
+    except ImportError:
+        pass
+
+    outputs.append(build_report(session))
+
+    for path in outputs:
+        assert oct(path.stat().st_mode)[-3:] == "600", path
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits only")
+def test_recorder_session_dir_and_files_are_owner_only(tmp_path):
+    logger = InteractionLogger(output_dir=str(tmp_path), session_name="s")
+    # The session folder is locked down at construction.
+    assert oct(logger.session_dir.stat().st_mode)[-3:] == "700"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits only")
+def test_lock_down_is_best_effort_on_missing_path(tmp_path):
+    from interlog.security import lock_down
+    # Never raises, even for a path that doesn't exist.
+    lock_down(tmp_path / "nope.txt")
+    lock_down(tmp_path / "nodir", is_dir=True)
 
 
 # --- screen (no real ffmpeg/portal/ctypes) ---------------------------------

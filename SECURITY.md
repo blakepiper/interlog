@@ -27,8 +27,16 @@ Relevant considerations for reviewers:
 
 - **Captured data is sensitive by nature.** Event logs and recordings live under
   the chosen output directory in plaintext; protecting them is the operator's
-  responsibility. `--privacy` redacts key identities at capture time.
+  responsibility. To reduce casual exposure on shared machines, InterLog restricts
+  session folders (`700`) and the files inside (`600`) to the owner on POSIX as
+  they are written — best-effort defense-in-depth, not encryption.
+- **Privacy mode redacts *which* key, not *when*.** `--privacy` drops key identity
+  but leaves inter-key timing in `events.csv`. Keystroke timing alone is a known
+  side channel for inferring password length and structure, so timing intervals
+  captured during a password-entry window remain sensitive even under privacy mode.
 - **`record --screen` shells out to `ffmpeg`.** Capture/remux arguments are
   built internally, not from untrusted input.
+- **Session names are validated.** `record --name` rejects path separators and
+  `..` segments so a name cannot write outside the chosen output directory.
 - **The HTML viewer loads the recording locally in the browser** and uploads
   nothing.
