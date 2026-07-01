@@ -17,6 +17,7 @@ from interlog.analyzer import (
     mouse_down_clicks,
     read_session_metadata,
 )
+from interlog.security import lock_down
 
 
 # ---------------------------------------------------------------------------
@@ -371,4 +372,5 @@ def build_report(session_path, output=None, bucket_size=5.0):
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(rendered, encoding="utf-8")
+    lock_down(output)
     return output

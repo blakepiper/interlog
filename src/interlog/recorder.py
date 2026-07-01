@@ -11,6 +11,7 @@ from threading import Event
 
 from interlog import __version__
 from interlog.branding import print_banner
+from interlog.security import lock_down
 
 # Column order for the events CSV. Defined once so the header and every
 # subsequent flush stay in sync.
@@ -58,6 +59,8 @@ class InteractionLogger:
         self.output_dir = Path(output_dir)
         self.session_dir = self.output_dir / self.session_name
         self.session_dir.mkdir(parents=True, exist_ok=True)
+        # Captured data is sensitive; keep the session folder owner-only.
+        lock_down(self.session_dir, is_dir=True)
 
         # Event storage
         self.events = []
@@ -222,6 +225,7 @@ class InteractionLogger:
         # Save initial metadata.
         with open(self.metadata_file, "w") as f:
             json.dump(self._build_metadata(), f, indent=2)
+        lock_down(self.metadata_file)
 
         # Start listeners (pynput imported lazily so the rest of the package -
         # analysis, viewer, tests - doesn't require an input backend/display).
@@ -244,6 +248,7 @@ class InteractionLogger:
         with open(self.events_file, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=EVENT_FIELDS)
             writer.writeheader()
+        lock_down(self.events_file)
 
         # Treat SIGTERM (terminal closed, `kill`) like Ctrl+C so the session is
         # finalized cleanly instead of leaving metadata without end_time/totals.

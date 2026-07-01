@@ -6,6 +6,19 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+- **Captured data is now owner-only on POSIX.** Session folders are created `700`
+  and every written artifact (`events.csv`, `metadata.json`, `summary.*`,
+  `intensity.csv`, `transcript.txt`, `text.json`, `heatmap.png`, `report.html`,
+  the viewer HTML, and the screen recording) is set `600` as it is written, via a
+  new best-effort `interlog.security.lock_down` helper (no-op on non-POSIX).
+- **`record --name` rejects path traversal.** Names containing a path separator or
+  a `..` segment are refused with a clear CLI error instead of writing outside the
+  output directory.
+- Documented the keystroke-timing side channel in privacy mode (timing intervals
+  remain in `events.csv` and are sensitive for password-entry windows) and added
+  an antivirus/EDR heads-up, in both `README.md` and `SECURITY.md`.
+
 ### Added
 - **README visuals** — heatmap, cross-session comparison chart, HTML report
   screenshot, and an animated GIF of the synced viewer seeking the recording —
@@ -61,6 +74,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   viewer, report, and the JSON export.
 
 ### Fixed
+- Rage-click detection now chains the distance check click-to-click instead of
+  anchoring every click to the seed, so a burst that drifts across the screen
+  (each click near the last, the last far from the first) still registers as one
+  burst.
 - The summary keyboard panel labelled a session with no typing as "privacy
   mode"; it now reads "none" and reserves "privacy mode" for redacted captures.
 - `report` now HTML-escapes the session name and date, so a session named with

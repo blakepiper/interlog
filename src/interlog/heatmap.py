@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 from interlog.analyzer import detect_rage_clicks, load_event_rows, read_session_metadata
+from interlog.security import lock_down
 
 
 def _grab_frame(video_path, out_path, duration, frame_at=0.25):
@@ -215,4 +216,5 @@ def build_heatmap(session_path, output=None, sigma=25, frame_at=0.25):
     fig.savefig(output, dpi=100, bbox_inches="tight",
                 facecolor=fig.get_facecolor())
     plt.close(fig)
+    lock_down(output)
     return output
