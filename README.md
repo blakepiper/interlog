@@ -558,12 +558,17 @@ System Settings → Privacy & Security → Accessibility → add your terminal.
 
 **Linux X11** — No extra steps needed.
 
-**Linux Wayland** — `interlog record --screen` uses xdg-desktop-portal + PipeWire
-(installed automatically). A native screen-picker dialog appears once when you
-start recording; choose the monitor and recording begins. Requires
-`xdg-desktop-portal` (ships with KDE Plasma and GNOME) and ffmpeg with PipeWire
-support (standard on Arch / Ubuntu 22.04+ / Fedora 38+). Run `interlog doctor`
-to verify.
+**Linux Wayland** — ⚠️ input capture (mouse/keyboard) does not work under
+Wayland compositors (GNOME, KDE Plasma, etc.). This is not an InterLog bug —
+Wayland's security model intentionally prevents any background process from
+observing global input events, unlike X11 or the OS-sanctioned APIs on macOS
+(Accessibility) and Windows. `interlog doctor --live` will report zero events
+captured. `--screen`-only recording (no interaction log) may still work via
+xdg-desktop-portal + PipeWire, but portal negotiation is flaky in practice on
+some distros/compositor versions and isn't guaranteed. If you're on Wayland,
+run `interlog doctor` first — if it reports capture is broken, either switch
+your session to X11 (available on most distros at the login screen) or use
+InterLog on macOS/Windows instead.
 
 **Windows** — Works out of the box on Windows 10+.
 
